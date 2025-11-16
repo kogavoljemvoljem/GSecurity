@@ -1327,4 +1327,5 @@ try {
     Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
 }
 # Exit immediately to allow the calling batch script to continue
+
 exit
