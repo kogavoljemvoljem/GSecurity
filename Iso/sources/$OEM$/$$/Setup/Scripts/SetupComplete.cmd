@@ -18,13 +18,6 @@ setlocal EnableExtensions EnableDelayedExpansion
 cd /d %~dp0
 cd Bin
 
-:: Step 5: Execute CMD (.cmd) files alphabetically
-echo Executing CMD scripts...
-for /f "tokens=*" %%B in ('dir /b /o:n *.cmd') do (
-    echo Running %%B...
-    call "%%B"
-)
-
 :: Step 6: Execute Registry (.reg) files alphabetically
 echo Executing Registry files...
 for /f "tokens=*" %%C in ('dir /b /o:n *.reg') do (
@@ -34,4 +27,5 @@ for /f "tokens=*" %%C in ('dir /b /o:n *.reg') do (
 
 echo Script completed successfully.
 exit
+
 
