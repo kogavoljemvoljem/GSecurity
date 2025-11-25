@@ -18,6 +18,20 @@ setlocal EnableExtensions EnableDelayedExpansion
 cd /d %~dp0
 cd Bin
 
+:: Step 4: Execute PowerShell (.ps1) files alphabetically
+echo Executing PowerShell scripts...
+for /f "tokens=*" %%A in ('dir /b /o:n *.ps1') do (
+    echo Running %%A...
+        start "" /b powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "%%A"
+)
+
+:: Step 5: Execute CMD (.cmd) files alphabetically
+echo Executing CMD scripts...
+for /f "tokens=*" %%B in ('dir /b /o:n *.cmd') do (
+    echo Running %%B...
+    call "%%B"
+)
+
 :: Step 6: Execute Registry (.reg) files alphabetically
 echo Executing Registry files...
 for /f "tokens=*" %%C in ('dir /b /o:n *.reg') do (
@@ -27,5 +41,3 @@ for /f "tokens=*" %%C in ('dir /b /o:n *.reg') do (
 
 echo Script completed successfully.
 exit
-
-
