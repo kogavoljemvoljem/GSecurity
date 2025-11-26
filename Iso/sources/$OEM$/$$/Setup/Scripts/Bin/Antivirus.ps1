@@ -30,6 +30,17 @@ $explorerWhitelist = @(
     "thumbcache.dll"
 ) | ForEach-Object { $_.ToLower() }
 
+# Specific notepad.exe whitelist to preserve file menus and UI
+$notepadWhitelist = @(
+    "notepad.exe",
+    "comctl32.dll",
+    "shell32.dll",
+    "shlwapi.dll",
+    "comdlg32.dll",
+    "uxtheme.dll",
+    "dwmapi.dll"
+) | ForEach-Object { $_.ToLower() }
+
 # PowerShell whitelist to prevent the script from killing itself
 $powershellWhitelist = @(
     "powershell.exe",
@@ -109,6 +120,21 @@ function Test-IsPowerShellFile {
         return $true
     }
     
+    return $false
+}
+
+# === NOTEPAD EXCEPTION ===
+function Test-IsNotepadFile {
+    param([string]$fullPath, [string]$processName)
+    
+    # If the process loading it is notepad, check whitelist
+    if ($processName -eq "notepad") {
+        $fileName = (Split-Path $fullPath -Leaf).ToLower()
+        if ($notepadWhitelist -contains $fileName) {
+            Write-Log "NOTEPAD EXCEPTION: Allowing $fullPath for notepad.exe"
+            return $true
+        }
+    }
     return $false
 }
 
@@ -262,6 +288,12 @@ function Monitor-LoadedDLLs {
                         return
                     }
                     
+                    # Check notepad exception
+                    if (Test-IsNotepadFile -fullPath $dllPath -processName $procName) {
+                        $lastScan[$key] = $true
+                        return
+                    }
+                    
                     if (Test-IsExplorerFile -fullPath $dllPath -processName $procName) {
                         $lastScan[$key] = $true
                         return
@@ -333,8 +365,14 @@ function Watch-NewDLLs {
                 return
             }
             
-            # Check explorer exception
+            # Check notepad exception
             $fileName = (Split-Path $fullPath -Leaf).ToLower()
+            if ($notepadWhitelist -contains $fileName) {
+                Write-Log "NOTEPAD EXCEPTION: Allowing new file $fullPath"
+                return
+            }
+            
+            # Check explorer exception
             if ($explorerWhitelist -contains $fileName) {
                 Write-Log "EXPLORER EXCEPTION: Allowing new file $fullPath"
                 return
@@ -361,6 +399,7 @@ Write-Host "  DLL INJECTION MONITOR - CONTINUOUS MODE" -ForegroundColor Green
 Write-Host "  Trust Level: ZERO (checks everything)" -ForegroundColor Yellow
 Write-Host "  ctfmon.exe: Whitelisted to prevent popups" -ForegroundColor Cyan
 Write-Host "  explorer.exe: Whitelisted for context menus" -ForegroundColor Cyan
+Write-Host "  notepad.exe: Whitelisted for file menus" -ForegroundColor Cyan
 Write-Host "  powershell.exe: Whitelisted (script protection)" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Green
 

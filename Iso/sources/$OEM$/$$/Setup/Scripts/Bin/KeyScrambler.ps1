@@ -1,5 +1,5 @@
-# Key Scrambler.ps1
-# Author: Gorstak
+# Key Scrambler.ps1 - Fixed for Multiple Keyboard Layouts
+# Author: Gorstak (Modified for layout support)
 
 $Source = @"
 using System;
@@ -14,7 +14,7 @@ public class KeyScrambler
     private const uint VK_Z = 90;
     private const uint VK_CONTROL = 0x11;
     private const uint VK_SHIFT = 0x10;
-    private const uint KEYEVENTF_UNICODE = 0x0004;
+    private const uint VK_MENU = 0x12; // Alt key
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
 
@@ -40,6 +40,7 @@ public class KeyScrambler
     [DllImport("user32.dll")] private static extern bool TranslateMessage(ref MSG lpMsg);
     [DllImport("user32.dll")] private static extern IntPtr DispatchMessage(ref MSG lpMsg);
     [DllImport("user32.dll")] private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+    [DllImport("user32.dll")] private static extern short GetKeyState(int nVirtKey);
     [DllImport("kernel32.dll")] private static extern IntPtr GetModuleHandle(string lpModuleName);
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -56,7 +57,8 @@ public class KeyScrambler
                                    GetModuleHandle(null), 0);
         if (_hookID == IntPtr.Zero) throw new Exception("Hook failed: " + Marshal.GetLastWin32Error());
 
-        Console.WriteLine("Scrambler ON â€“ you type normally, loggers see random A-Z sequences with varied patterns.");
+        Console.WriteLine("Scrambler ON – you type normally, loggers see random A-Z sequences with varied patterns.");
+        Console.WriteLine("Fixed for multiple keyboard layouts and special characters.");
         Console.WriteLine("Close window or Ctrl+C to stop.");
 
         MSG msg;
@@ -72,12 +74,20 @@ public class KeyScrambler
         if (_hookID != IntPtr.Zero) { UnhookWindowsHookEx(_hookID); _hookID = IntPtr.Zero; Console.WriteLine("Stopped."); }
     }
 
+    private static bool AreModifiersPressed()
+    {
+        bool ctrlPressed = (GetKeyState((int)VK_CONTROL) & 0x8000) != 0;
+        bool shiftPressed = (GetKeyState((int)VK_SHIFT) & 0x8000) != 0;
+        bool altPressed = (GetKeyState((int)VK_MENU) & 0x8000) != 0;
+        return ctrlPressed || shiftPressed || altPressed;
+    }
+
     private static void InjectFakeKey()
     {
-        ushort fakeChar = (ushort)_rnd.Next((int)VK_A, (int)VK_Z + 1);
-        keybd_event(0, 0, KEYEVENTF_UNICODE, (UIntPtr)fakeChar);    // Unicode down
-        keybd_event(0, 0, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, (UIntPtr)fakeChar);  // Unicode up
-        Thread.Sleep(_rnd.Next(1, 11)); // Random delay 1-10ms
+        byte fakeVk = (byte)_rnd.Next((int)VK_A, (int)VK_Z + 1);
+        keybd_event(fakeVk, 0, 0, UIntPtr.Zero);    // Key down
+        keybd_event(fakeVk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);  // Key up
+        Thread.Sleep(_rnd.Next(1, 8)); // Reduced random delay 1-7ms
     }
 
     private static void InjectFakeModifier()
@@ -85,13 +95,25 @@ public class KeyScrambler
         uint modifier = _rnd.Next(0, 2) == 0 ? VK_CONTROL : VK_SHIFT;
         keybd_event((byte)modifier, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero); // Modifier down
         keybd_event((byte)modifier, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero); // Modifier up
-        Thread.Sleep(_rnd.Next(1, 11)); // Random delay 1-10ms
+        Thread.Sleep(_rnd.Next(1, 8)); // Reduced random delay 1-7ms
     }
 
     private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
         {
+            KBDLLHOOKSTRUCT kbStruct = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+            
+            if (AreModifiersPressed())
+            {
+                return CallNextHookEx(_hookID, nCode, wParam, lParam);
+            }
+
+            if (kbStruct.vkCode < VK_A || kbStruct.vkCode > VK_Z)
+            {
+                return CallNextHookEx(_hookID, nCode, wParam, lParam);
+            }
+
             // 10% chance to skip fake injections entirely
             if (_rnd.NextDouble() < 0.1) return CallNextHookEx(_hookID, nCode, wParam, lParam);
 
@@ -100,8 +122,8 @@ public class KeyScrambler
             bool injectBefore = pattern == 0 || pattern == 2;
             bool injectAfter = pattern == 1 || pattern == 2;
 
-            // Inject fake modifier 20% of the time
-            if (_rnd.NextDouble() < 0.2) InjectFakeModifier();
+            // Inject fake modifier 15% of the time (reduced from 20%)
+            if (_rnd.NextDouble() < 0.15) InjectFakeModifier();
 
             // Inject 0 to 3 random A-Z letters before the real key
             if (injectBefore)
@@ -120,8 +142,8 @@ public class KeyScrambler
                 for (int i = 0; i < afterCount; i++) InjectFakeKey();
             }
 
-            // Inject another fake modifier 20% of the time
-            if (_rnd.NextDouble() < 0.2) InjectFakeModifier();
+            // Inject another fake modifier 15% of the time (reduced from 20%)
+            if (_rnd.NextDouble() < 0.15) InjectFakeModifier();
 
             return result;
         }
