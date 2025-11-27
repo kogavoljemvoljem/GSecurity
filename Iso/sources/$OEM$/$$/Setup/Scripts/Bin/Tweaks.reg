@@ -324,10 +324,12 @@ Windows Registry Editor Version 5.00
 "RestrictRemoteClients"=dword:00000001
 
 [HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows NT\Terminal Services]
+"fAllowFullControl"=dword:00000000
 "fEnableSmartCard"=dword:00000000
 "fSingleSessionPerUser"=dword:00000001
 "AllowMultipleTSSessions"=dword:00000000
 "fDenyTSConnections"=dword:00000001
+"fAllowTSConnections"=dword:00000000
 
 [HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\Connect]
 "RequirePinForPairing"=dword:00000002
