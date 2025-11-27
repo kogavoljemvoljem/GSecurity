@@ -8,16 +8,13 @@ $logFile          = "$quarantineFolder\dll_monitor_log.txt"
 $localDatabase    = "$quarantineFolder\dll_scanned.txt"
 $scannedHashes    = @{}
 
-# Specific ctfmon.exe whitelist (to prevent popups)
-# Add DLL names here that ctfmon.exe legitimately uses
-$ctfmonWhitelist = @(
+# Essential Windows components whitelist
+$essentialWhitelist = @(
+    # ctfmon (text services)
     "msctf.dll",
     "msutb.dll",
-    "ctfmon.exe"
-) | ForEach-Object { $_.ToLower() }
-
-# Specific explorer.exe whitelist to preserve context menus and shell functionality
-$explorerWhitelist = @(
+    "ctfmon.exe",
+    # explorer (shell/context menus)
     "explorer.exe",
     "shell32.dll",
     "shlwapi.dll",
@@ -27,79 +24,26 @@ $explorerWhitelist = @(
     "windows.storage.dll",
     "twinui.dll",
     "twinui.pcshell.dll",
-    "thumbcache.dll"
-) | ForEach-Object { $_.ToLower() }
-
-# Specific notepad.exe whitelist to preserve file menus and UI
-$notepadWhitelist = @(
+    "thumbcache.dll",
+    # notepad
     "notepad.exe",
-    "comctl32.dll",
-    "shell32.dll",
-    "shlwapi.dll",
     "comdlg32.dll",
     "uxtheme.dll",
-    "dwmapi.dll"
-) | ForEach-Object { $_.ToLower() }
-
-# PowerShell whitelist to prevent the script from killing itself
-$powershellWhitelist = @(
+    "dwmapi.dll",
+    # powershell
     "powershell.exe",
     "microsoft.powershell.consolehost.ni.dll",
     "system.management.automation.ni.dll",
-    "system.management.automation.dll"
-) | ForEach-Object { $_.ToLower() }
-
-$rainmeterWhitelist = @(
-    "rainmeter.exe",
-    "rainmeter.dll",
-    "lua51.dll",
-    "lua53.dll",
-    "audiolevel.dll",
-    "nowplaying.dll",
-    "webparser.dll",
-    "win7audio.dll",
-    "recycle.dll",
-    "speedfan.dll",
-    "perfmon.dll",
-    "power.dll",
-    "sysinfo.dll",
-    "windowmessage.dll",
-    "itunes.dll",
-    "mediakey.dll",
-    "advancedcpu.dll",
-    "coretemp.dll",
-    "folderinfo.dll",
-    "inputtext.dll",
-    "ping.dll",
-    "process.dll",
-    "quote.dll",
-    "runcommand.dll",
-    "speedtest.dll",
-    "usagemonitor.dll",
-    "wifi.dll"
-) | ForEach-Object { $_.ToLower() }
-
-$mlwappWhitelist = @(
-    "mlwapp.exe"
-) | ForEach-Object { $_.ToLower() }
-
-$wallpaperEngineWhitelist = @(
-    "wallpaper32.exe",
-    "wallpaper64.exe",
-    "wallpaperservice32.exe",
-    "wallpaperservice64.exe",
-    "ui32.exe",
-    "libcef.dll",
-    "libglesv2.dll",
-    "libegl.dll",
-    "d3dcompiler_47.dll",
-    "chrome_elf.dll",
-    "widevinecdmadapter.dll",
-    "icudtl.dat"
-) | ForEach-Object { $_.ToLower() }
-
-# NVIDIA Control Panel whitelist
-$nvidiaWhitelist = @(
+    "system.management.automation.dll",
+    # 7-Zip
+    "7z.exe",
+    "7zfm.exe",
+    "7zg.exe",
+    "7z.dll",
+    "7z.sfx",
+    "7-zip.dll",
+    "7-zip32.dll",
+    # NVIDIA Control Panel whitelist
     "nvcplui.exe",
     "nvcpl.dll",
     "nvapi64.dll",
@@ -115,80 +59,16 @@ $nvidiaWhitelist = @(
     "nvfatbinaryloader.dll"
 ) | ForEach-Object { $_.ToLower() }
 
-# AMD Radeon Software whitelist
-$amdWhitelist = @(
-    "radeonpanel.exe",
-    "radeonpanel.dll",
-    "radeonpanel.host.exe",
-    "amdrsserv.exe",
-    "amdow.exe",
-    "amddvr.exe",
-    "atiadlxx.dll",
-    "atiadlxy.dll",
-    "aticfx64.dll",
-    "aticfx32.dll",
-    "atioglxx.dll",
-    "atio6axx.dll",
-    "amdmantle64.dll",
-    "amdvlk64.dll",
-    "amdihk64.dll",
-    "amdhcp64.dll",
-    "amdfendrsr.dll"
-) | ForEach-Object { $_.ToLower() }
-
-# Intel Graphics and Management Engine whitelist
-$intelWhitelist = @(
-    "igfxem.exe",
-    "igfxtray.exe",
-    "igfxpers.exe",
-    "igfxcuiservice.exe",
-    "igfxext.exe",
-    "igfx11cmrt64.dll",
-    "igfxdo.dll",
-    "igfxdv32.dll",
-    "igdumdim64.dll",
-    "igd10iumd64.dll",
-    "igdrcl64.dll",
-    "intelocl64.dll",
-    "hccutils.dll",
-    "lmcore.dll",
-    "imecr.dll"
-) | ForEach-Object { $_.ToLower() }
-
-# Realtek Audio whitelist
-$realtekWhitelist = @(
-    "rthdvcpl.exe",
-    "rtkauduservice64.exe",
-    "rtkngui64.exe",
-    "rtkhdasservice.exe",
-    "rtkaudioservice64.exe",
-    "rtkapi64.dll",
-    "rtkcolaudiominiport.dll",
-    "rtkcoinstii.dll",
-    "rtlcpapi.dll",
-    "rtpcee64.dll",
-    "maximumaudioeffect.dll",
-    "voicemeeter.dll",
-    "wrapapo.dll"
-) | ForEach-Object { $_.ToLower() }
-
-# Dolby Atmos whitelist
-$dolbyWhitelist = @(
-    "dolbydax2api.exe",
-    "dax3api.exe",
-    "dax3_api_proxy.exe",
-    "dolbydax2trayicon.exe",
-    "dolbyaposvc.exe",
-    "dax2_api.dll",
-    "dax3_api.dll",
-    "dolbyapo2.dll",
-    "dolbyaposvc64.dll",
-    "dolbyapomgr64.dll",
-    "dax2audioapo.dll",
-    "dax3_api_proxy.dll",
-    "dlbapo64.dll",
-    "dolbyapo100.dll"
-) | ForEach-Object { $_.ToLower() }
+# Process name patterns for exception matching
+$essentialProcesses = @(
+    "ctfmon",
+    "explorer",
+    "notepad",
+    "powershell",
+    "7z",
+    "7zfm",
+    "7zg"
+)
 
 # === LOGGING ===
 function Write-Log {
@@ -205,291 +85,39 @@ function Write-Log {
     $entry | Out-File -FilePath $logFile -Append -Encoding UTF8
 }
 
-# === CTFMON EXCEPTION ===
-function Test-IsCtfmonFile {
+# === UNIFIED EXCEPTION CHECKER ===
+function Test-IsWhitelistedFile {
     param([string]$fullPath, [string]$processName)
     
-    # If the process loading it is ctfmon, check whitelist
-    if ($processName -eq "ctfmon") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($ctfmonWhitelist -contains $fileName) {
-            Write-Log "CTFMON EXCEPTION: Allowing $fullPath for ctfmon.exe"
-            return $true
-        }
-    }
-    return $false
-}
-
-# === EXPLORER EXCEPTION ===
-function Test-IsExplorerFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is explorer, check whitelist
-    if ($processName -eq "explorer") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($explorerWhitelist -contains $fileName) {
-            Write-Log "EXPLORER EXCEPTION: Allowing $fullPath for explorer.exe"
-            return $true
-        }
-    }
-    return $false
-}
-
-# === POWERSHELL EXCEPTION ===
-function Test-IsPowerShellFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is powershell, check whitelist
-    if ($processName -match "powershell") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($powershellWhitelist -contains $fileName) {
-            Write-Log "POWERSHELL EXCEPTION: Allowing $fullPath for PowerShell"
-            return $true
-        }
-    }
-    
-    # Allow all .NET Native Images loaded by PowerShell
-    $pathLower = $fullPath.ToLower()
-    if ($pathLower -match "\.ni\.dll$") {
-        Write-Log "POWERSHELL EXCEPTION: Allowing .NET Native Image $fullPath for PowerShell"
-        return $true
-    }
-    
-    # Allow PowerShell core files
-    if ($pathLower -match "powershell|system\.management\.automation") {
-        Write-Log "POWERSHELL EXCEPTION: Allowing core file $fullPath for PowerShell"
-        return $true
-    }
-    
-    return $false
-}
-
-# === NOTEPAD EXCEPTION ===
-function Test-IsNotepadFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is notepad, check whitelist
-    if ($processName -eq "notepad") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($notepadWhitelist -contains $fileName) {
-            Write-Log "NOTEPAD EXCEPTION: Allowing $fullPath for notepad.exe"
-            return $true
-        }
-    }
-    return $false
-}
-
-# === RAINMETER EXCEPTION ===
-function Test-IsRainmeterFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is rainmeter, check whitelist
-    if ($processName -eq "rainmeter") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($rainmeterWhitelist -contains $fileName) {
-            Write-Log "RAINMETER EXCEPTION: Allowing $fullPath for Rainmeter"
-            return $true
-        }
-    }
-    
-    # Allow any DLL from Rainmeter directory (skins/plugins)
-    $pathLower = $fullPath.ToLower()
-    if ($pathLower -match "\\rainmeter\\") {
-        Write-Log "RAINMETER EXCEPTION: Allowing Rainmeter directory file $fullPath"
-        return $true
-    }
-    
-    return $false
-}
-
-# === MLWAPP EXCEPTION ===
-function Test-IsMLWAppFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is mlwapp
-    if ($processName -eq "mlwapp") {
-        Write-Log "MLWAPP EXCEPTION: Allowing $fullPath for MLWApp"
-        return $true
-    }
-    
-    # Allow any DLL from MLWApp directory
-    $pathLower = $fullPath.ToLower()
-    if ($pathLower -match "\\mlwapp\\") {
-        Write-Log "MLWAPP EXCEPTION: Allowing MLWApp directory file $fullPath"
-        return $true
-    }
-    
-    return $false
-}
-
-# === WALLPAPER ENGINE EXCEPTION ===
-function Test-IsWallpaperEngineFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is wallpaper engine
-    if ($processName -match "wallpaper32|wallpaper64|wallpaperservice|ui32") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($wallpaperEngineWhitelist -contains $fileName) {
-            Write-Log "WALLPAPER ENGINE EXCEPTION: Allowing $fullPath for Wallpaper Engine"
-            return $true
-        }
-    }
-    
-    # Allow any DLL from Wallpaper Engine directory
-    $pathLower = $fullPath.ToLower()
-    if ($pathLower -match "\\wallpaper engine\\") {
-        Write-Log "WALLPAPER ENGINE EXCEPTION: Allowing Wallpaper Engine directory file $fullPath"
-        return $true
-    }
-    
-    return $false
-}
-
-# === NVIDIA CONTROL PANEL EXCEPTION ===
-function Test-IsNvidiaFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is nvidia-related
-    if ($processName -match "nvcpl|nvidia") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($nvidiaWhitelist -contains $fileName) {
-            Write-Log "NVIDIA EXCEPTION: Allowing $fullPath for NVIDIA"
-            return $true
-        }
-    }
-    
-    # Allow any DLL from NVIDIA directory
-    $pathLower = $fullPath.ToLower()
-    if ($pathLower -match "\\nvidia\\|\\nvidiagames\\|\\nvidia corporation\\") {
-        Write-Log "NVIDIA EXCEPTION: Allowing NVIDIA directory file $fullPath"
-        return $true
-    }
-    
-    # Allow files in System32 if they match nvidia whitelist
     $fileName = (Split-Path $fullPath -Leaf).ToLower()
-    if ($nvidiaWhitelist -contains $fileName) {
-        Write-Log "NVIDIA EXCEPTION: Allowing whitelisted file $fullPath"
-        return $true
-    }
-    
-    return $false
-}
-
-# === AMD RADEON EXCEPTION ===
-function Test-IsAMDFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is AMD-related
-    if ($processName -match "radeon|amd|ati") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($amdWhitelist -contains $fileName) {
-            Write-Log "AMD EXCEPTION: Allowing $fullPath for AMD"
-            return $true
-        }
-    }
-    
-    # Allow any DLL from AMD directory
     $pathLower = $fullPath.ToLower()
-    if ($pathLower -match "\\amd\\|\\ati technologies\\|\\advanced micro devices\\") {
-        Write-Log "AMD EXCEPTION: Allowing AMD directory file $fullPath"
-        return $true
-    }
     
-    # Allow files in System32 if they match AMD whitelist
-    $fileName = (Split-Path $fullPath -Leaf).ToLower()
-    if ($amdWhitelist -contains $fileName) {
-        Write-Log "AMD EXCEPTION: Allowing whitelisted file $fullPath"
-        return $true
-    }
-    
-    return $false
-}
-
-# === INTEL EXCEPTION ===
-function Test-IsIntelFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is Intel-related
-    if ($processName -match "igfx|intel") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($intelWhitelist -contains $fileName) {
-            Write-Log "INTEL EXCEPTION: Allowing $fullPath for Intel"
-            return $true
+    # Check if it's an essential Windows/PowerShell/7-Zip process
+    foreach ($proc in $essentialProcesses) {
+        if ($processName -match $proc) {
+            if ($essentialWhitelist -contains $fileName) {
+                Write-Log "EXCEPTION: Allowing $fullPath for $processName"
+                return $true
+            }
+            
+            # PowerShell special case: allow all .NET Native Images
+            if ($processName -match "powershell" -and $pathLower -match "\.ni\.dll$") {
+                Write-Log "POWERSHELL EXCEPTION: Allowing .NET Native Image $fullPath"
+                return $true
+            }
+            
+            # PowerShell special case: allow core files
+            if ($processName -match "powershell" -and $pathLower -match "powershell|system\.management\.automation") {
+                Write-Log "POWERSHELL EXCEPTION: Allowing core file $fullPath"
+                return $true
+            }
+            
+            # 7-Zip special case: allow files in 7-Zip directory
+            if ($processName -match "7z" -and $pathLower -match "\\7-zip\\") {
+                Write-Log "7-ZIP EXCEPTION: Allowing 7-Zip directory file $fullPath"
+                return $true
+            }
         }
-    }
-    
-    # Allow any DLL from Intel directory
-    $pathLower = $fullPath.ToLower()
-    if ($pathLower -match "\\intel\\|\\intel corporation\\") {
-        Write-Log "INTEL EXCEPTION: Allowing Intel directory file $fullPath"
-        return $true
-    }
-    
-    # Allow files in System32 if they match Intel whitelist
-    $fileName = (Split-Path $fullPath -Leaf).ToLower()
-    if ($intelWhitelist -contains $fileName) {
-        Write-Log "INTEL EXCEPTION: Allowing whitelisted file $fullPath"
-        return $true
-    }
-    
-    return $false
-}
-
-# === REALTEK EXCEPTION ===
-function Test-IsRealtekFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is Realtek-related
-    if ($processName -match "rtk|realtek") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($realtekWhitelist -contains $fileName) {
-            Write-Log "REALTEK EXCEPTION: Allowing $fullPath for Realtek"
-            return $true
-        }
-    }
-    
-    # Allow any DLL from Realtek directory
-    $pathLower = $fullPath.ToLower()
-    if ($pathLower -match "\\realtek\\") {
-        Write-Log "REALTEK EXCEPTION: Allowing Realtek directory file $fullPath"
-        return $true
-    }
-    
-    # Allow files in System32 if they match Realtek whitelist
-    $fileName = (Split-Path $fullPath -Leaf).ToLower()
-    if ($realtekWhitelist -contains $fileName) {
-        Write-Log "REALTEK EXCEPTION: Allowing whitelisted file $fullPath"
-        return $true
-    }
-    
-    return $false
-}
-
-# === DOLBY ATMOS EXCEPTION ===
-function Test-IsDolbyFile {
-    param([string]$fullPath, [string]$processName)
-    
-    # If the process loading it is Dolby-related
-    if ($processName -match "dolby|dax") {
-        $fileName = (Split-Path $fullPath -Leaf).ToLower()
-        if ($dolbyWhitelist -contains $fileName) {
-            Write-Log "DOLBY EXCEPTION: Allowing $fullPath for Dolby"
-            return $true
-        }
-    }
-    
-    # Allow any DLL from Dolby directory
-    $pathLower = $fullPath.ToLower()
-    if ($pathLower -match "\\dolby\\") {
-        Write-Log "DOLBY EXCEPTION: Allowing Dolby directory file $fullPath"
-        return $true
-    }
-    
-    # Allow files in System32 if they match Dolby whitelist
-    $fileName = (Split-Path $fullPath -Leaf).ToLower()
-    if ($dolbyWhitelist -contains $fileName) {
-        Write-Log "DOLBY EXCEPTION: Allowing whitelisted file $fullPath"
-        return $true
     }
     
     return $false
@@ -633,247 +261,127 @@ function Monitor-LoadedDLLs {
                         return
                     }
                     
-                    if (Test-IsPowerShellFile -fullPath $dllPath -processName $procName) {
+                    if (Test-IsWhitelistedFile -fullPath $dllPath -processName $procName) {
                         $lastScan[$key] = $true
                         return
                     }
                     
-                    if (Test-IsRainmeterFile -fullPath $dllPath -processName $procName) {
+                    # Check if previously scanned
+                    if ($scannedHashes.ContainsKey($dllPath)) {
                         $lastScan[$key] = $true
                         return
                     }
                     
-                    if (Test-IsMLWAppFile -fullPath $dllPath -processName $procName) {
-                        $lastScan[$key] = $true
+                    $result = Get-DLLThreatScore -filePath $dllPath
+                    if ($null -eq $result) {
                         return
                     }
                     
-                    if (Test-IsWallpaperEngineFile -fullPath $dllPath -processName $procName) {
-                        $lastScan[$key] = $true
-                        return
-                    }
+                    $scannedHashes[$dllPath] = $result.Hash
                     
-                    if (Test-IsNvidiaFile -fullPath $dllPath -processName $procName) {
-                        $lastScan[$key] = $true
-                        return
-                    }
-                    
-                    if (Test-IsAMDFile -fullPath $dllPath -processName $procName) {
-                        $lastScan[$key] = $true
-                        return
-                    }
-                    
-                    if (Test-IsIntelFile -fullPath $dllPath -processName $procName) {
-                        $lastScan[$key] = $true
-                        return
-                    }
-                    
-                    if (Test-IsRealtekFile -fullPath $dllPath -processName $procName) {
-                        $lastScan[$key] = $true
-                        return
-                    }
-                    
-                    if (Test-IsDolbyFile -fullPath $dllPath -processName $procName) {
-                        $lastScan[$key] = $true
-                        return
-                    }
-                    
-                    # Check ctfmon exception
-                    if (Test-IsCtfmonFile -fullPath $dllPath -processName $procName) {
-                        $lastScan[$key] = $true
-                        return
-                    }
-                    
-                    # Check notepad exception
-                    if (Test-IsNotepadFile -fullPath $dllPath -processName $procName) {
-                        $lastScan[$key] = $true
-                        return
-                    }
-                    
-                    if (Test-IsExplorerFile -fullPath $dllPath -processName $procName) {
-                        $lastScan[$key] = $true
-                        return
-                    }
-                    
-                    # Analyze threat
-                    $analysis = Get-DLLThreatScore -filePath $dllPath
-                    if ($analysis -and $analysis.Score -ge 50) {
-                        Quarantine-SuspiciousDLL -filePath $dllPath -reason $analysis.Reasons -score $analysis.Score
+                    if ($result.Score -ge 50) {
+                        Quarantine-SuspiciousDLL -filePath $dllPath -reason $result.Reasons -score $result.Score
                     }
                     else {
-                        # Mark as scanned
-                        $lastScan[$key] = $true
-                        if ($analysis) {
-                            "$($analysis.Hash),$($analysis.Score)" | Out-File -FilePath $localDatabase -Append -Encoding utf8
-                        }
+                        Write-Log "SAFE: $dllName in $($proc.Name) (Score: $($result.Score))"
                     }
+                    
+                    $lastScan[$key] = $true
                 }
             }
             catch {
-                # Some system processes can't be accessed
+                # Process exited or access denied
             }
-        }
-        
-        # Clean up old scan cache every 100 iterations
-        if ($lastScan.Count -gt 10000) {
-            $lastScan.Clear()
-            Write-Log "Cleared scan cache"
         }
         
         Start-Sleep -Seconds 5
     }
 }
 
-# === FILE SYSTEM WATCHER ===
-function Watch-NewDLLs {
-    Write-Log "Setting up filesystem watchers..."
+# === FILESYSTEM WATCHER ===
+function Monitor-NewDLLs {
+    Write-Log "Starting filesystem monitoring for new DLL files..."
     
-    Get-CimInstance Win32_LogicalDisk | Where-Object DriveType -in 2,3,4 | ForEach-Object {
-        $path = "$($_.DeviceID)\"
-        
-        $watcher = New-Object IO.FileSystemWatcher $path, "*.dll"
+    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 }
+    
+    foreach ($drive in $drives) {
+        $watcher = New-Object System.IO.FileSystemWatcher
+        $watcher.Path = $drive.Root
+        $watcher.Filter = "*.dll"
         $watcher.IncludeSubdirectories = $true
-        $watcher.NotifyFilter = [IO.NotifyFilters]::FileName -bor [IO.NotifyFilters]::LastWrite
         $watcher.EnableRaisingEvents = $true
         
         $action = {
-            $fullPath = $Event.SourceEventArgs.FullPath
+            $path = $Event.SourceEventArgs.FullPath
+            $changeType = $Event.SourceEventArgs.ChangeType
             
-            # Skip quarantine folder
-            if ($fullPath -like "*\Quarantine\*") { return }
+            Write-Log "NEW DLL DETECTED: $path ($changeType)"
             
-            Write-Log "NEW DLL DETECTED: $fullPath"
+            Start-Sleep -Milliseconds 500
             
-            $pathLower = $fullPath.ToLower()
-            if ($pathLower -match "\\rainmeter\\") {
-                Write-Log "RAINMETER EXCEPTION: Allowing new file $fullPath"
-                return
-            }
-            
-            if ($pathLower -match "\\mlwapp\\") {
-                Write-Log "MLWAPP EXCEPTION: Allowing new file $fullPath"
-                return
-            }
-            
-            if ($pathLower -match "\\wallpaper engine\\") {
-                Write-Log "WALLPAPER ENGINE EXCEPTION: Allowing new file $fullPath"
-                return
-            }
-            
-            if ($pathLower -match "\\nvidia\\|\\nvidiagames\\|\\nvidia corporation\\") {
-                Write-Log "NVIDIA EXCEPTION: Allowing new file $fullPath"
-                return
-            }
-            
-            if ($pathLower -match "\\amd\\|\\ati technologies\\|\\advanced micro devices\\") {
-                Write-Log "AMD EXCEPTION: Allowing new file $fullPath"
-                return
-            }
-            
-            if ($pathLower -match "\\intel\\|\\intel corporation\\") {
-                Write-Log "INTEL EXCEPTION: Allowing new file $fullPath"
-                return
-            }
-            
-            if ($pathLower -match "\\realtek\\") {
-                Write-Log "REALTEK EXCEPTION: Allowing new file $fullPath"
-                return
-            }
-            
-            if ($pathLower -match "\\dolby\\") {
-                Write-Log "DOLBY EXCEPTION: Allowing new file $fullPath"
-                return
-            }
-            
-            # Allow all .NET Native Images loaded by PowerShell
-            if ($pathLower -match "\.ni\.dll$" -and $pathLower -match "\\windows\\assembly\\") {
-                Write-Log "POWERSHELL EXCEPTION: Allowing .NET Native Image $fullPath"
-                return
-            }
-            
-            # Check PowerShell exception
-            if (Test-IsPowerShellFile -fullPath $fullPath -processName "") {
-                return
-            }
-            
-            # Check ctfmon exception
-            if (Test-IsCtfmonFile -fullPath $fullPath -processName "") {
-                return
-            }
-            
-            # Check notepad exception
-            $fileName = (Split-Path $fullPath -Leaf).ToLower()
-            if ($notepadWhitelist -contains $fileName) {
-                Write-Log "NOTEPAD EXCEPTION: Allowing new file $fullPath"
-                return
-            }
-            
-            # Check explorer exception
-            if ($explorerWhitelist -contains $fileName) {
-                Write-Log "EXPLORER EXCEPTION: Allowing new file $fullPath"
-                return
-            }
-            
-            if (Test-IsNvidiaFile -fullPath $fullPath -processName "") {
-                return
-            }
-            
-            if (Test-IsAMDFile -fullPath $fullPath -processName "") {
-                return
-            }
-            
-            if (Test-IsIntelFile -fullPath $fullPath -processName "") {
-                return
-            }
-            
-            if (Test-IsRealtekFile -fullPath $fullPath -processName "") {
-                return
-            }
-            
-            if (Test-IsDolbyFile -fullPath $fullPath -processName "") {
-                return
-            }
-            
-            Start-Sleep -Milliseconds 500  # Let file finish writing
-            
-            $analysis = Get-DLLThreatScore -filePath $fullPath
-            if ($analysis -and $analysis.Score -ge 50) {
-                Quarantine-SuspiciousDLL -filePath $fullPath -reason $analysis.Reasons -score $analysis.Score
+            if (Test-Path $path) {
+                $result = Get-DLLThreatScore -filePath $path
+                if ($null -eq $result) {
+                    return
+                }
+                
+                if ($result.Score -ge 50) {
+                    Quarantine-SuspiciousDLL -filePath $path -reason $result.Reasons -score $result.Score
+                }
+                else {
+                    Write-Log "NEW DLL SAFE: $path (Score: $($result.Score))"
+                }
             }
         }
         
-        Register-ObjectEvent $watcher Created -Action $action >$null
-        Register-ObjectEvent $watcher Changed -Action $action >$null
-        
-        Write-Log "Watcher active on $path"
+        Register-ObjectEvent -InputObject $watcher -EventName Created -Action $action | Out-Null
+        Write-Log "Monitoring drive: $($drive.Name)"
     }
 }
 
-# === MAIN EXECUTION ===
-Write-Host "==================================================" -ForegroundColor Green
-Write-Host "  DLL INJECTION MONITOR - CONTINUOUS MODE" -ForegroundColor Green
-Write-Host "  Trust Level: ZERO (checks everything)" -ForegroundColor Yellow
-Write-Host "  ctfmon.exe: Whitelisted to prevent popups" -ForegroundColor Cyan
-Write-Host "  explorer.exe: Whitelisted for context menus" -ForegroundColor Cyan
-Write-Host "  notepad.exe: Whitelisted for file menus" -ForegroundColor Cyan
-Write-Host "  powershell.exe: Whitelisted (script protection)" -ForegroundColor Cyan
-Write-Host "  Rainmeter: Whitelisted (skins & plugins)" -ForegroundColor Cyan
-Write-Host "  Wallpaper Engine: Whitelisted" -ForegroundColor Cyan
-Write-Host "  MLWApp: Whitelisted" -ForegroundColor Cyan
-Write-Host "  NVIDIA/AMD/Intel: Whitelisted (drivers)" -ForegroundColor Cyan
-Write-Host "  Realtek/Dolby: Whitelisted (audio)" -ForegroundColor Cyan
-Write-Host "==================================================" -ForegroundColor Green
-
-Write-Log "DLL Injection Monitor started"
+# === MAIN ===
+if (-not (Test-Path $quarantineFolder)) {
+    New-Item -Path $quarantineFolder -ItemType Directory -Force | Out-Null
+}
 
 # Load previous scan results
 if (Test-Path $localDatabase) {
-    $lines = Get-Content $localDatabase
-    Write-Log "Loaded $($lines.Count) previous scan results"
+    Get-Content $localDatabase | ForEach-Object {
+        $parts = $_ -split '\|'
+        if ($parts.Length -ge 2) {
+            $scannedHashes[$parts[0]] = $parts[1]
+        }
+    }
+    Write-Log "Loaded $($scannedHashes.Count) previous scan results"
 }
 
-# Start filesystem monitoring in background
-Watch-NewDLLs
+Write-Log "=== DLL Injection Monitor Started (Continuous Mode) ==="
+Write-Log "Quarantine folder: $quarantineFolder"
+Write-Log "Trust policy: Zero trust - everything checked"
+Write-Log "Exceptions: ctfmon, explorer, notepad, PowerShell, 7-Zip"
 
-# Start process monitoring (runs in foreground)
-Monitor-LoadedDLLs
+# Start monitoring in background jobs
+$dllJob = Start-Job -ScriptBlock ${function:Monitor-LoadedDLLs}
+$fsJob = Start-Job -ScriptBlock ${function:Monitor-NewDLLs}
+
+Write-Log "Monitoring jobs started. Press Ctrl+C to stop."
+
+try {
+    while ($true) {
+        # Receive output from jobs
+        Receive-Job -Job $dllJob -ErrorAction SilentlyContinue
+        Receive-Job -Job $fsJob -ErrorAction SilentlyContinue
+        
+        # Save database periodically
+        $scannedHashes.GetEnumerator() | ForEach-Object {
+            "$($_.Key)|$($_.Value)"
+        } | Out-File -FilePath $localDatabase -Force
+        
+        Start-Sleep -Seconds 10
+    }
+}
+finally {
+    Write-Log "Stopping monitoring jobs..."
+    Stop-Job -Job $dllJob, $fsJob
+    Remove-Job -Job $dllJob, $fsJob
+}
