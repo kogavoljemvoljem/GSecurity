@@ -1,5 +1,11 @@
 Windows Registry Editor Version 5.00
 
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System]
+"DisableRegistryTools"=dword:00000001
+
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Policies\System]
+"DisableRegistryTools"=dword:00000000
+
 [HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer]
 "NoDrives"=dword:00000001
 "NoCDROM"=dword:00000001
@@ -438,4 +444,5 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\WorkplaceJoin]
 "autoWorkplaceJoin"=dword:00000000
+
 
