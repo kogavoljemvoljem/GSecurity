@@ -2,6 +2,26 @@ Windows Registry Editor Version 5.00
 
 ; GSecurityLite by Gorstak
 
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\safer]
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\safer\codeidentifiers]
+"authenticodeenabled"=dword:00010000
+"DefaultLevel"=dword:00010000
+"ExecutableTypes"=hex(7):41,00,44,00,45,00,00,00,41,00,44,00,50,00,00,00,42,00,\
+  41,00,53,00,00,00,43,00,48,00,4d,00,00,00,43,00,52,00,54,00,00,00,48,00,4c,\
+  00,50,00,00,00,48,00,54,00,41,00,00,00,48,00,54,00,43,00,00,00,49,00,4e,00,\
+  46,00,00,00,49,00,4e,00,53,00,00,00,49,00,53,00,50,00,00,00,4a,00,4f,00,42,\
+  00,00,00,4d,00,44,00,42,00,00,00,4d,00,44,00,45,00,00,00,4d,00,53,00,43,00,\
+  00,00,4d,00,53,00,49,00,00,00,4d,00,53,00,50,00,00,00,4d,00,53,00,54,00,00,\
+  00,50,00,43,00,44,00,00,00,50,00,49,00,46,00,00,00,50,00,53,00,31,00,00,00,\
+  52,00,45,00,47,00,00,00,53,00,43,00,54,00,00,00,53,00,48,00,53,00,00,00,54,\
+  00,4d,00,50,00,00,00,56,00,42,00,00,00,57,00,50,00,43,00,00,00,57,00,53,00,\
+  43,00,00,00,00,00
+"Levels"=dword:00071000
+"LogFileName"="C:\\Windows\\system32\\LogFiles\\SAFER.LOG"
+"PolicyScope"=dword:00000001
+"TransparentEnabled"=dword:00000002
+
 [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Srp\GP]
 "RuleCount"=dword:00010001
 
@@ -105,6 +125,12 @@ Windows Registry Editor Version 5.00
 "AllowTelemetry"=dword:00000000
 "AlwaysOn"=dword:00000001
 
+[HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataProtection]
+"AllowScreenCapture"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataProtection]
+"AllowScreenCapture"=dword:00000000
+
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DataCollection\DEP]
 "AlwaysOn"=dword:00000001
 
@@ -113,12 +139,6 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap]
 "IEZoneMapping"=dword:00000001
-
-[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\DataCollection]
-"LimitEnhancedDiagnosticDataWindowsAnalytics"=dword:00000001
-"MaxTelemetryAllowed"=dword:00000000
-"DoNotShowFeedbackNotifications"=dword:00000001
-"AllowTelemetry"=dword:00000000
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\Defender\SmartScreen]
 "EnableSmartScreenInShell"=dword:00000001
@@ -378,4 +398,3 @@ Windows Registry Editor Version 5.00
 "RunAsPPL"=dword:00000001
 "EnumerateLocalUsers"=dword:00000000
 "DisableRegistryTools"=dword:00000001
-
