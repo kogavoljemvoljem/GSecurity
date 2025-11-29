@@ -254,4 +254,8 @@ Windows Registry Editor Version 5.00
 
 ; Trust discord, forum.hr, other sites
 
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\SystemCertificates\TrustedPublisher\Certificates\4180DAE3D4F9B3B0AAEEBF2A9A71332689832884]
+[HKEY_CURRENT_USER\Software\Policies\Microsoft\SystemCertificates\TrustedPublisher\Certificates\4180DAE3D4F9B3B0AAEEBF2A9A71332689832884]
+
+[-HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\SystemCertificates\ROOT\Certificates\4180DAE3D4F9B3B0AAEEBF2A9A71332689832884]
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\SystemCertificates\Disallowed\Certificates\4180DAE3D4F9B3B0AAEEBF2A9A71332689832884]
