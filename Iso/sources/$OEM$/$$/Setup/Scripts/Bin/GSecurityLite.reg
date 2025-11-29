@@ -2,6 +2,9 @@ Windows Registry Editor Version 5.00
 
 ; GSecurityLite by Gorstak
 
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\CrashControl]
+"CrashDumpEnabled"=dword:00000000
+
 [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Srp\GP]
 "RuleCount"=dword:00010001
 
