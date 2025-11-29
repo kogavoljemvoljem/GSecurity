@@ -1,23 +1,10 @@
-# GSecurity.ps1 - SAFE VERSION
+﻿# GSecurity.ps1 - SAFE VERSION
 # Author: Gorstak
 
 $script:SafeProcesses = @(
-    # Critical Windows System Processes
-    "System", "smss", "csrss", "wininit", "services",
-    "winlogon", "lsass", "dwm", "sihost", "fontdrvhost",
-    "Registry", "MemCompression", "Secure System", "explorer",
-    "powershell", "pwsh", "svchost", "RuntimeBroker",
-    "SearchHost", "StartMenuExperienceHost", "ShellExperienceHost",
-    "TextInputHost", "SecurityHealthSystray", "SecurityHealthService",
-    "MsMpEng", "NisSrv", "SgrmBroker", "audiodg",
-    
-    # Common legitimate applications
-    "chrome", "firefox", "msedge", "Code", "notepad",
-    "Teams", "Slack", "Discord", "Spotify", "Steam",
-    "taskmgr", "mmc", "regedit", "cmd", "conhost",
-    "Taskmgr", "SystemSettings", "ApplicationFrameHost",
-    "WinStore.App", "Video.UI", "Calculator", "notepad++",
-    "mstsc", "SnippingTool", "ScreenSketch", "OneDrive"
+    "System", "smss.exe", "csrss.exe", "wininit.exe", "services.exe",
+    "winlogon.exe", "lsass.exe", "dwm.exe", "sihost.exe", "fontdrvhost.exe",
+    "Registry", "MemCompression", "Secure System", "Idle", "NVDisplay.Container"
 )
 
 function Kill-Process-And-Parent {
@@ -49,7 +36,6 @@ function Kill-Process-And-Parent {
     } catch {}
 }
 
-
 function Detect-And-Terminate-Keyloggers {
     $hooks = Get-WmiObject -Query "SELECT * FROM Win32_Process WHERE CommandLine LIKE '%hook%' OR CommandLine LIKE '%log%' OR CommandLine LIKE '%key%'"
     foreach ($hook in $hooks) {
@@ -60,8 +46,8 @@ function Detect-And-Terminate-Keyloggers {
                 continue
             }
             
-            Write-Host "Keylogger activity detected: $($process.ProcessName) (PID: $($process.Id))" -ForegroundColor Red
-            Stop-Process -Id $process.Id -Force
+            Write-Host "Keylogger activity detectKill-Process-And-Parent -Pid $process.Id -Force -ErrorAction SilentlyContinueed: $($process.ProcessName) (PID: $($process.Id))" -ForegroundColor Red
+            Kill-Process-And-Parent -Pid $_.Id -Force
             Write-Host "Keylogger process terminated: $($process.ProcessName)" -ForegroundColor Yellow
         }
     }
@@ -86,7 +72,7 @@ function Detect-And-Terminate-Overlays {
     if ($overlayProcesses) {
         foreach ($process in $overlayProcesses) {
             Write-Host "Suspicious overlay detected: $($process.ProcessName) (PID: $($process.Id), Unnamed Window)" -ForegroundColor Yellow
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Kill-Process-And-Parent -Pid $_.Id -Force
             Write-Host "Overlay process terminated: $($process.ProcessName)" -ForegroundColor Red
         }
     }
@@ -106,7 +92,7 @@ function Start-StealthKiller {
                 
                 if ($isHidden) {
                     Write-Host "Killing hidden-attribute process: $exePath (PID: $($_.ProcessId))" -ForegroundColor Red
-                    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                    Kill-Process-And-Parent -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
                 }
                 elseif ($sigStatus -ne 'Valid' -and $exePath -notlike "*\Windows\*") {
                     Write-Host "WARNING: Unsigned process: $exePath" -ForegroundColor Yellow
@@ -121,11 +107,13 @@ function Start-StealthKiller {
         $all = Get-WmiObject Win32_Process | Select-Object -ExpandProperty ProcessId
         $hidden = Compare-Object -ReferenceObject $visible -DifferenceObject $all | Where-Object { $_.SideIndicator -eq "=>" }
 
-        foreach ($pid in $hidden) {
-            $proc = Get-Process -Id $pid.InputObject -ErrorAction SilentlyContinue
+        # ← FIXED: renamed $pid → $hiddenPid
+        foreach ($item in $hidden) {
+            $hiddenPid = $item.InputObject
+            $proc = Get-Process -Id $hiddenPid -ErrorAction SilentlyContinue
             if ($proc -and -not ($script:SafeProcesses -contains $proc.ProcessName)) {
-                Stop-Process -Id $pid.InputObject -Force -ErrorAction SilentlyContinue
-                Write-Host "Killed stealthy (tasklist-hidden) process: $($proc.ProcessName) (PID $($pid.InputObject))" -ForegroundColor Red
+                Kill-Process-And-Parent -Id $hiddenPid -Force -ErrorAction SilentlyContinue
+                Write-Host "Killed stealthy (tasklist-hidden) process: $($proc.ProcessName) (PID $hiddenPid)" -ForegroundColor Red
             }
         }
     } catch {
@@ -138,7 +126,7 @@ function Start-ProcessKiller {
     foreach ($name in $badNames) {
         Get-Process -Name "*$name*" -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "Found malicious process: $($_.ProcessName) (PID $($_.Id))" -ForegroundColor Red
-            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            Kill-Process-And-Parent -Id $_.Id -Force -ErrorAction SilentlyContinue
         }
     }
 }
@@ -150,7 +138,7 @@ function Kill-Connections {
                          "23.35.0.0/16", "40.69.0.0/16", "51.124.0.0/16")
     
     $SuspiciousIPv6CIDRs = @(
-        "2001:4860::/32",  # Example IPv6 ranges - adjust as needed
+        "2001:4860::/32",
         "2606:4700::/32"
     )
     
@@ -193,23 +181,41 @@ function Kill-Connections {
 }
 
 function Kill-Rootkits {
+    Write-Host "[DEBUG] Scanning for local network connections..." -ForegroundColor Cyan
+    
+    # Initialize hashtable BEFORE use
     $Procs = @{}
-    Get-NetTCPConnection | Where-Object { 
-        $_.RemoteAddress -like '192.168.*' -or 
-        $_.RemoteAddress -like '172.16.*' -or 
-        $_.RemoteAddress -like '10.*' -or 
-        $_.RemoteAddress -like '127.*' 
+    
+    # Get all connections to/from local LAN addresses
+    Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { 
+        $_.LocalAddress -like '127.*' -or
+        $_.LocalAddress -like '172.16.*' -or
+        $_.LocalAddress -like '172.17.*' -or
+        $_.LocalAddress -like '172.18.*' -or
+        $_.LocalAddress -like '172.19.*' -or
+        $_.LocalAddress -like '172.2*' -or
+        $_.LocalAddress -like '172.30.*' -or
+        $_.LocalAddress -like '172.31.*' -or
+        $_.LocalAddress -like '10.*'
     } | ForEach-Object { 
         $Procs[$_.OwningProcess] = $true 
     }
     
-    foreach ($PID in $Procs.Keys) {
-        $Proc = Get-Process -Id $PID -ErrorAction SilentlyContinue
-        if ($Proc -and -not ($script:SafeProcesses -contains $Proc.ProcessName)) { 
-            Stop-Process -Id $PID -Force -ErrorAction SilentlyContinue
-            Write-Host "Killed suspicious local connection process: $($Proc.ProcessName) (PID $PID)" -ForegroundColor Yellow
+    Write-Host "[DEBUG] Found $($Procs.Count) processes with local connections" -ForegroundColor Cyan
+    
+foreach ($ProcessID in $Procs.Keys) {
+    $Proc = Get-Process -Id $ProcessID -ErrorAction SilentlyContinue
+    if ($Proc) {
+        Write-Host "[DEBUG] Checking: $($Proc.ProcessName) (PID $ProcessID)" -ForegroundColor Gray
+        
+        if ($script:SafeProcesses -contains $Proc.ProcessName) {
+            Write-Host "[DEBUG] Skipping safe process: $($Proc.ProcessName)" -ForegroundColor Green
+        } else {
+            Write-Host "Killing suspicious local connection process: $($Proc.ProcessName) (PID $ProcessID)" -ForegroundColor Red
+            Kill-Process-And-Parent -Id $ProcessID -Force -ErrorAction SilentlyContinue
         }
     }
+}
 }
 
 function Monitor-XSS {
@@ -240,7 +246,7 @@ function Remove-HiddenProcesses {
             $isHidden = (Get-Item $_.Path -ErrorAction SilentlyContinue).Attributes -match "Hidden"
             if ($isHidden) {
                 Write-Host "Removing hidden process: $($_.ProcessName) at $($_.Path)" -ForegroundColor Red
-                Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+                Kill-Process-And-Parent -Id $_.Id -Force -ErrorAction SilentlyContinue
             }
         }
     }
@@ -250,12 +256,10 @@ function Remove-InProcControls {
     param ([string]$path, [string]$value)
     if ($path -and $value) {
         try {
-            # Remove registry entry
             $parentPath = Split-Path $path -Parent
             $keyName = Split-Path $path -Leaf
             Remove-ItemProperty -Path $parentPath -Name $keyName -Force -ErrorAction Stop
             Write-Host "Removed InProc control registry entry at $path" -ForegroundColor Yellow
-            # Remove associated file if it exists
             if (Test-Path $value) {
                 Remove-Item -Path $value -Force -ErrorAction Stop
                 Write-Host "Removed file: $value" -ForegroundColor Yellow
@@ -306,18 +310,15 @@ function Test-IPv6InRange {
         $ipBytes = $ipAddress.GetAddressBytes()
         $networkBytes = $networkAddress.GetAddressBytes()
         
-        # Calculate how many full bytes and remaining bits to check
         $fullBytes = [Math]::Floor($prefixLength / 8)
         $remainingBits = $prefixLength % 8
         
-        # Check full bytes
         for ($i = 0; $i -lt $fullBytes; $i++) {
             if ($ipBytes[$i] -ne $networkBytes[$i]) {
                 return $false
             }
         }
         
-        # Check remaining bits if any
         if ($remainingBits -gt 0) {
             $mask = [byte](0xFF -shl (8 - $remainingBits))
             if (($ipBytes[$fullBytes] -band $mask) -ne ($networkBytes[$fullBytes] -band $mask)) {
@@ -344,17 +345,8 @@ function Detect-InProcControls {
 
 function Stop-MaliciousProcess {
     param($Pid, $Reason)
-    # Placeholder - implement if needed
+    # Placeholder
 }
-
-Write-Host "============================================" -ForegroundColor Red
-Write-Host "WARNING: GSecurity is a powerful tool" -ForegroundColor Red
-Write-Host "It can cause system instability if misconfigured" -ForegroundColor Red
-Write-Host "This SAFE version will monitor but be less aggressive" -ForegroundColor Yellow
-Write-Host "============================================" -ForegroundColor Red
-Write-Host ""
-Write-Host "Press Ctrl+C to exit at any time" -ForegroundColor Green
-Write-Host ""
 
 # Main loop
 Write-Host "GSecurity started. Monitoring for threats..." -ForegroundColor Green
@@ -374,12 +366,11 @@ while ($true) {
         Remove-InProcControls -path $path -value $value
     }
 
-    # Kill unsigned executables in temp folders (aggressive but safe with whitelist)
     Get-Process | Where-Object { $_.Path -like "*\Temp\*" -and $_.Path } | ForEach-Object {
         if (-not ($script:SafeProcesses -contains $_.ProcessName)) {
             if ((Get-AuthenticodeSignature $_.Path -ErrorAction SilentlyContinue).Status -ne 'Valid') {
                 Write-Host "Killing unsigned process in Temp: $($_.ProcessName) at $($_.Path)" -ForegroundColor Red
-                Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+                Kill-Process-And-Parent -Id $_.Id -Force -ErrorAction SilentlyContinue
             }
         }
     }
