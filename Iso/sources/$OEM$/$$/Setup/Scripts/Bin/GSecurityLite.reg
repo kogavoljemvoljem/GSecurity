@@ -2,6 +2,9 @@ Windows Registry Editor Version 5.00
 
 ; GSecurityLite by Gorstak
 
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Wbem]
+"EnableRemoteWmi"=dword:00000000
+
 [HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\CrashControl]
 "CrashDumpEnabled"=dword:00000000
 
@@ -381,4 +384,5 @@ Windows Registry Editor Version 5.00
 "RunAsPPL"=dword:00000001
 "EnumerateLocalUsers"=dword:00000000
 "DisableRegistryTools"=dword:00000001
+
 
