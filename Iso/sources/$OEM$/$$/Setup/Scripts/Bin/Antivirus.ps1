@@ -99,6 +99,11 @@ $wallpaperEngineWhitelist = @(
     "cef.dll", "libcef.dll"
 ) | ForEach-Object { $_.ToLower() }
 
+# MLWApp
+$mlwappWhitelist = @(
+    "mlwapp.dll", "mlwapp.exe"
+) | ForEach-Object { $_.ToLower() }
+
 # === LOGGING FUNCTION ===
 function Write-Log {
     param([string]$message)
@@ -359,6 +364,40 @@ function Test-IsWallpaperEngineFile {
     return $false
 }
 
+function Test-IsMicrosoftFile {
+    param([string]$fullPath, [string]$processName)
+    
+    $fileName = (Split-Path $fullPath -Leaf).ToLower()
+    
+    # Check if file matches Microsoft whitelist
+    if ($microsoftWhitelist -contains $fileName) {
+        return $true
+    }
+    
+    # Check if filename starts with whitelisted prefixes
+    foreach ($item in $microsoftWhitelist) {
+        if ($fileName -like "$item*") {
+            return $true
+        }
+    }
+    
+    $pathLower = $fullPath.ToLower()
+    if ($pathLower -match "\\windows\\system32\\|\\windows\\syswow64\\") {
+        try {
+            $signature = Get-AuthenticodeSignature -FilePath $fullPath -ErrorAction SilentlyContinue
+            if ($signature.Status -eq "Valid" -and $signature.SignerCertificate.Subject -match "Microsoft") {
+                return $true
+            }
+        }
+        catch {
+            # Signature check failed, treat as suspicious
+            return $false
+        }
+    }
+    
+    return $false
+}
+
 # === THREAT ANALYSIS FUNCTION ===
 function Get-DLLThreatScore {
     param([string]$filePath)
@@ -377,28 +416,6 @@ function Get-DLLThreatScore {
         
         # Calculate hash
         $hash = (Get-FileHash -Path $filePath -Algorithm SHA256 -ErrorAction Stop).Hash
-        
-        # Check location
-        $directory = $fileInfo.DirectoryName.ToLower()
-        $isTrustedLocation = $false
-        $trustedPaths = @(
-            "\\windows\\system32",
-            "\\windows\\syswow64",
-            "\\program files\\",
-            "\\program files (x86)\\"
-        )
-        
-        foreach ($path in $trustedPaths) {
-            if ($directory -like "*$path*") {
-                $isTrustedLocation = $true
-                break
-            }
-        }
-        
-        if (-not $isTrustedLocation) {
-            $score += 30
-            $reasons += "Non-standard location"
-        }
         
         # Check digital signature
         try {
@@ -477,9 +494,112 @@ function Quarantine-SuspiciousDLL {
 
 # === MAIN MONITORING FUNCTION ===
 function Monitor-LoadedDLLs {
-    Write-Log "Starting DLL injection monitoring (continuous mode)..."
+    Write-Log "Starting DLL injection monitoring (continuous mode) - scanning all drives..."
     
     $lastScan = @{}
+    
+    Write-Host "Performing initial full system scan..." -ForegroundColor Yellow
+    
+    # Get all drives (fixed, removable, and network)
+    $allDrives = Get-PSDrive -PSProvider FileSystem | Where-Object { 
+        $_.Used -ne $null -or $_.Free -ne $null 
+    }
+    
+    foreach ($drive in $allDrives) {
+        $drivePath = "$($drive.Name):\"
+        Write-Host "Scanning drive: $drivePath" -ForegroundColor Cyan
+        Write-Log "Starting scan of drive: $drivePath"
+        
+        try {
+            # Recursively scan for all DLLs on this drive
+            Get-ChildItem -Path $drivePath -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                $dllPath = $_.FullName
+                $dllName = $_.Name
+                
+                # Skip if already scanned
+                if ($lastScan.ContainsKey($dllPath)) {
+                    return
+                }
+                
+                $lastScan[$dllPath] = $true
+                
+                # Check vendor whitelists (silently)
+                if (Test-IsMicrosoftFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsPowerShellFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsRainmeterFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsMLWAppFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsWallpaperEngineFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsNvidiaFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsAMDFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsIntelFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsRealtekFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsDolbyFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-Is7ZipFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsCtfmonFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsExplorerFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                if (Test-IsNotepadFile -fullPath $dllPath -processName "") {
+                    return
+                }
+                
+                # Analyze threat for non-whitelisted DLLs
+                $analysis = Get-DLLThreatScore -filePath $dllPath
+                if ($analysis -and $analysis.Score -ge 50) {
+                    Quarantine-SuspiciousDLL -filePath $dllPath -reason $analysis.Reasons -score $analysis.Score
+                }
+                else {
+                    # Log safe DLLs to database
+                    if ($analysis) {
+                        "$($analysis.Hash),$($analysis.Score)" | Out-File -FilePath $localDatabase -Append -Encoding utf8
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Log "ERROR: Failed to scan drive $drivePath - $_"
+        }
+    }
+    
+    Write-Host "Initial full system scan complete. Starting continuous memory monitoring..." -ForegroundColor Green
+    Write-Log "Initial scan complete. Starting continuous memory monitoring..."
     
     while ($true) {
         Get-Process | ForEach-Object {
@@ -493,62 +613,66 @@ function Monitor-LoadedDLLs {
                     $key = "$($proc.Id)-$dllPath"
                     
                     if ($lastScan.ContainsKey($key)) {
-                        continue  # Skip to next DLL
+                        return
                     }
                     
                     $lastScan[$key] = $true
                     
                     # Check vendor whitelists (silently)
+                    if (Test-IsMicrosoftFile -fullPath $dllPath -processName $procName) {
+                        return
+                    }
+                    
                     if (Test-IsPowerShellFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-IsRainmeterFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-IsMLWAppFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-IsWallpaperEngineFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-IsNvidiaFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-IsAMDFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-IsIntelFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-IsRealtekFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-IsDolbyFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-Is7ZipFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-IsCtfmonFile -fullPath $dllPath -processName $procName) {
-                        continue
-                    }
-                    
-                    if (Test-IsNotepadFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
                     }
                     
                     if (Test-IsExplorerFile -fullPath $dllPath -processName $procName) {
-                        continue
+                        return
+                    }
+                    
+                    if (Test-IsNotepadFile -fullPath $dllPath -processName $procName) {
+                        return
                     }
                     
                     # Analyze threat for non-whitelisted DLLs
