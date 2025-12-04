@@ -1,4 +1,4 @@
-# CleanGuard.ps1 - Fixed & Working Version (100% clean Unicode)
+﻿# CleanGuard.ps1 - Fixed & Working Version (100% clean Unicode)
 # Monitors: .exe .dll .sys .winmd
 # Uses: CIRCL (whitelist) + MalwareBazaar (blacklist) - NO VirusTotal
 
@@ -83,66 +83,58 @@ $watcher.NotifyFilter = "FileName,LastWrite"
 
 $action = {
     $path = $Event.SourceEventArgs.FullPath
+    # Only care about .exe, .dll, .sys, .winmd
     if($path -notmatch '\.(exe|dll|sys|winmd)$') { return }
 
-    Start-Sleep -Milliseconds 1200
+    # Wait until file is fully written and unlocked
+    Start-Sleep -Milliseconds 1500
     if(!(Test-Path $path)) { return }
 
     $name = [IO.Path]::GetFileName($path)
     $hash = Get-SHA256 $path
 
+    # 1. Explicitly trusted → do nothing
     if(Test-KnownGood $hash) {
-        Log "Known-good (CIRCL): $name"
+        Log "Known-good (CIRCL whitelist): $name"
         return
     }
     if(Test-SignedByMicrosoft $path) {
-        Log "Trusted Microsoft: $name"
+        Log "Trusted Microsoft signature: $name"
         return
     }
+
+    # 2. Known malware → quarantine instantly
     if(Test-MalwareBazaar $hash) {
-        Log "MALWARE DETECTED (MalwareBazaar): $name"
+        Log "MALWARE DETECTED → auto-quarantined: $name"
         Move-ToQuarantine $path
         return
     }
 
+    # 3. Everything else that is unsigned AND outside of Windows/Program Files → auto-quarantine
     $lower = $path.ToLower()
     if($lower -notmatch 'c:\\windows\\|c:\\program files\\|c:\\program files \(x86\)\\|c:\\windowsapps\\') {
-        Log "SUSPICIOUS unsigned file: $name"
-        $choice = [System.Windows.Forms.MessageBox]::Show(
-            "Suspicious unsigned file detected:`n`n$path`n`nQuarantine it?", 
-            "CleanGuard", "YesNo", "Warning")
-        if($choice -eq "Yes") { Move-ToQuarantine $path }
+        Log "SUSPICIOUS unsigned file outside system folders → auto-quarantined: $name"
+        Move-ToQuarantine $path
+        return
     }
+
+    # 4. Unsigned but inside Windows/Program Files folders → just log, don’t touch
+    Log "Unsigned but in trusted location (allowed): $name"
 }
 
 Register-ObjectEvent $watcher Created  -Action $action | Out-Null
 Register-ObjectEvent $watcher Changed -Action $action | Out-Null
 $watcher.EnableRaisingEvents = $true
 
-# Tray icon
-Add-Type -AssemblyName System.Windows.Forms
-$notify = New-Object System.Windows.Forms.NotifyIcon
-$notify.Icon = [System.Drawing.SystemIcons]::Shield
-$notify.Text = "CleanGuard - Real-time protection ON"
-$notify.Visible = $true
+# Optional: hide the PowerShell window completely when started via Task Scheduler
+Add-Type -Name Window -Namespace Console -MemberDefinition '
+[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+'
+$hwnd = [Console.Window]::GetConsoleWindow()
+[Console.Window]::ShowWindow($hwnd, 0) | Out-Null   # 0 = hide window
 
-$menu = New-Object System.Windows.Forms.ContextMenuStrip
-$menu.Items.Add("Open Quarantine", $null, { explorer $Quarantine }) | Out-Null
-$menu.Items.Add("Undo Last", $null, { Undo-LastQuarantine }) | Out-Null
-$menu.Items.Add("Exit", $null, {
-    $notify.Visible = $false
-    $watcher.Dispose()
-    Log "CleanGuard stopped by user"
-    exit
-}) | Out-Null
-$notify.ContextMenuStrip = $menu
+Log "CleanGuard started in fully automatic silent mode (no pop-ups)"
 
-Log "Real-time protection ACTIVE"
-[System.Windows.Forms.MessageBox]::Show("CleanGuard is now running!`nMonitoring .exe, .dll, .sys and .winmd files.", "CleanGuard", "OK", "Information") | Out-Null
-
-# Keep script alive
-try { while($true) { Start-Sleep -Seconds 3600 } }
-finally {
-    $notify.Visible = $false
-    $watcher.Dispose()
-}
+# Keep alive forever
+while($true) { Start-Sleep -Seconds 86400 }
