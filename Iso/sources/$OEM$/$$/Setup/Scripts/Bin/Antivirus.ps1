@@ -3,7 +3,7 @@
 # Define paths and parameters
 $taskName = "SimpleAntivirusStartup"
 $taskDescription = "Runs the Simple Antivirus script at user logon with admin privileges."
-$scriptDir = "C:\Windows\Setup\Scripts"
+$scriptDir = "C:\Windows\Setup\Scripts\Bin"
 $scriptPath = "$scriptDir\Antivirus.ps1"
 $quarantineFolder = "C:\Quarantine"
 $logFile = "$quarantineFolder\antivirus_log.txt"
@@ -39,29 +39,6 @@ Write-Log "Script initialized. Admin: $isAdmin, User: $env:USERNAME, SID: $([Sec
 if ((Get-ExecutionPolicy) -eq "Restricted") {
     Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
     Write-Log "Set execution policy to Bypass for current user."
-}
- 
-# Setup script directory and copy script
-if (-not (Test-Path $scriptDir)) {
-    New-Item -Path $scriptDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
-    Write-Log "Created script directory: $scriptDir"
-}
-if (-not (Test-Path $scriptPath) -or (Get-Item $scriptPath).LastWriteTime -lt (Get-Item $MyInvocation.MyCommand.Path).LastWriteTime) {
-    Copy-Item -Path $MyInvocation.MyCommand.Path -Destination $scriptPath -Force -ErrorAction Stop
-    Write-Log "Copied/Updated script to: $scriptPath"
-}
- 
-# Register scheduled task as SYSTEM
-$existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-if (-not $existingTask -and $isAdmin) {
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`""
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-    $task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -Description $taskDescription
-    Register-ScheduledTask -TaskName $taskName -InputObject $task -Force -ErrorAction Stop
-    Write-Log "Scheduled task '$taskName' registered to run as SYSTEM."
-} elseif (-not $isAdmin) {
-    Write-Log "Skipping task registration: Admin privileges required"
 }
  
 # Load or Reset Scanned Files Database
