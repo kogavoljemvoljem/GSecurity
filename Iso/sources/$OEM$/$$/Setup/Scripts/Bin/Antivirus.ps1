@@ -434,7 +434,7 @@ function Start-RealTime {
         } catch {
             Log "Realtime loop error: $_"
         }
-        Start-Sleep -Seconds 30
+        Start-Sleep -Seconds 0.1
     }
 }
 
@@ -445,4 +445,5 @@ Write-Host "Antivirus initial pass complete."
 Log "Antivirus initial pass complete."
 
 # End of script
+
 
