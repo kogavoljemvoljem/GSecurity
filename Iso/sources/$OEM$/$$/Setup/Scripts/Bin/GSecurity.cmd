@@ -29,6 +29,5 @@ set bcd=%windir%\system32\bcdedit.exe
 %bcd% /set uselegacyapicmode yes
 
 :: Tasks
-schtasks /Create /TN "GSecurity" /XML "GSecurity.xml" /RU "SYSTEM" /F
 schtasks /Create /TN "Antivirus" /XML "Antivirus.xml" /RU "SYSTEM" /F
 schtasks /Create /TN "KeyScrambler" /XML "KeyScrambler.xml" /F
