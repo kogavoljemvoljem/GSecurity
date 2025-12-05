@@ -280,18 +280,10 @@ function Decide-And-Act($file) {
         Write-Host "   -> MalwareBazaar lookup failed or returned no match"
     }
 
-    # 4 & 5) Unsigned -> decide by location
-    $inWindows = Is-InWindowsPath $file
-    if ($inWindows) {
-        Write-Host "   -> Unsigned but inside Windows/Program Files. ALLOWED (logged)"
-        Log "Allowed unsigned inside Windows: $file ($sha256)"
-        return
-    } else {
-        Write-Host "   -> Unsigned and outside Windows/Program Files. QUARANTINE"
-        Log "Quarantined (unsigned outside): $file ($sha256)"
-        Do-Quarantine $file
-        return
-    }
+    # 4 & 5) Unsigned → now allowed everywhere (just logged)
+    Write-Host "   -> Unsigned executable. ALLOWED everywhere (logged for review)"
+    Log "Allowed unsigned (any location): $file ($sha256)"
+    return
 }
 
 # -------------------------
@@ -453,3 +445,4 @@ Write-Host "Antivirus initial pass complete."
 Log "Antivirus initial pass complete."
 
 # End of script
+
