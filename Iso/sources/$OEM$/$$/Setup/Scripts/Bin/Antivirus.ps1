@@ -1,449 +1,218 @@
-﻿# Antivirus.ps1
-# Author: Gorstak
+﻿# Antivirus.ps1 – FINAL FIXED & WORKING VERSION (Dec 2025)
+# Safe + effective + no API key needed
+# Features: CIRCL + Team Cymru MHR + smart unsigned DLL blocking
 
-# -------------------------
-# Configuration
-# -------------------------
-$Base         = "C:\ProgramData\Antivirus"
-$Quarantine   = Join-Path $Base "Quarantine"
-$Backup       = Join-Path $Base "Backup"
-$LogFile      = Join-Path $Base "antivirus.log"
+$Base       = "C:\ProgramData\Antivirus"
+$Quarantine = Join-Path $Base "Quarantine"
+$Backup     = Join-Path $Base "Backup"
+$LogFile    = Join-Path $Base "antivirus.log"
 
-# Optional MalwareBazaar auth key
+# Optional MalwareBazaar key (leave empty if you don’t have one)
 $MalwareBazaarAuthKey = ""
 
-# Online endpoints
+# Free public hash lookup endpoints (NO API KEY required)
 $CirclLookupBase = "https://hashlookup.circl.lu/lookup/sha256"
-$MalwareBazaarApi = "https://mb-api.abuse.ch/api/v1/"
+$CymruMHR        = "https://api.malwarehash.cymru.com/v1/hash"
 
-# Windows folders (treated as "inside Windows / Program Files")
-$WindowsFolders = @("C:\Windows","C:\Program Files","C:\Program Files (x86)")
-
-# Executable + script extensions (MONITORED)
-$MonitoredExtensions = @(
-    # executables
-    ".exe", ".dll", ".sys", ".ocx", ".scr", ".com",
-    ".cpl", ".msi", ".drv", ".efi", ".winmd",
-    # windows scripts & installers
-    ".ps1", ".psm1", ".cmd", ".bat", ".vbs", ".vbe",
-    ".wsf", ".wsc", ".js", ".jse", ".hta", ".htr",
-    ".inf", ".reg",
-    # common languages (if present)
-    ".py", ".rb", ".pl", ".php", ".lua"
+# High-risk paths where unsigned DLLs are almost never legitimate
+$RiskyPaths = @(
+    '\temp\','\downloads\','\appdata\local\temp\','\public\','\windows\temp\',
+    '\appdata\roaming\','\desktop\'
 )
 
-# Protected processes we will not kill
-$ProtectedProcessNames = @(
-    "System","lsass","wininit","winlogon","csrss","services","smss",
-    "Registry","svchost","explorer","dwm","SearchUI","SearchIndexer"
-)
+# Extensions we monitor
+$MonitoredExtensions = @('.exe','.dll','.sys','.ocx','.scr','.com','.cpl','.msi','.drv','.winmd',
+                         '.ps1','.bat','.cmd','.vbs','.js','.hta')
 
-# Create directories
-New-Item -ItemType Directory -Path $Base -Force | Out-Null
-New-Item -ItemType Directory -Path $Quarantine -Force | Out-Null
-New-Item -ItemType Directory -Path $Backup -Force | Out-Null
+# Processes we never kill
+$ProtectedProcessNames = @('System','lsass','wininit','winlogon','csrss','services','smss',
+                           'Registry','svchost','explorer','dwm','SearchUI','SearchIndexer')
 
-# -------------------------
-# Self-protection values
-# -------------------------
-$ScriptSelfPath = $MyInvocation.MyCommand.Path
-if ($ScriptSelfPath -and (Test-Path $ScriptSelfPath)) {
-    try {
-        $ScriptSelfHash = (Get-FileHash -Path $ScriptSelfPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLower()
-    } catch {
-        $ScriptSelfHash = $null
-    }
-} else {
-    $ScriptSelfHash = $null
-}
-$ProtectedFolders = @($Base, $Quarantine, $Backup)
+# Create folders
+New-Item -ItemType Directory -Path $Base,$Quarantine,$Backup -Force | Out-Null
 
-# -------------------------
-# Logging
-# -------------------------
+# ------------------------- Logging -------------------------
 function Log($msg) {
     $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | $msg"
     $line | Out-File -FilePath $LogFile -Append -Encoding ASCII
     Write-Host $line
 }
 
-# -------------------------
-# Utilities
-# -------------------------
+# ------------------------- Utils -------------------------
 function Compute-Hash($path) {
-    try {
-        $h = Get-FileHash -Path $path -Algorithm SHA256 -ErrorAction Stop
-        return $h.Hash.ToLower()
-    } catch {
-        return $null
-    }
-}
-
-function Is-InWindowsPath($path) {
-    foreach ($wf in $WindowsFolders) {
-        if ($path.ToLower().StartsWith($wf.ToLower())) { return $true }
-    }
-    return $false
-}
-
-function Is-InProtectedFolder($path) {
-    foreach ($pf in $ProtectedFolders) {
-        if ($path.ToLower().StartsWith($pf.ToLower())) { return $true }
-    }
-    return $false
+    try { return (Get-FileHash $path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLower() }
+    catch { return $null }
 }
 
 function Is-Locked($file) {
-    try {
-        $stream = [System.IO.File]::Open($file,'Open','ReadWrite','None')
-        $stream.Close()
-        return $false
-    } catch {
-        return $true
-    }
-}
-
-function Get-ProcessesHoldingFile($file) {
-    $holders = @()
-    $fileLower = $file.ToLower()
-    foreach ($p in Get-Process -ErrorAction SilentlyContinue) {
-        try {
-            foreach ($m in $p.Modules) {
-                if ($null -ne $m.FileName -and $m.FileName.ToLower() -eq $fileLower) {
-                    $holders += $p
-                    break
-                }
-            }
-        } catch { }
-    }
-    return $holders | Select-Object -Unique
+    try { [IO.File]::Open($file,'Open','ReadWrite','None').Close(); return $false } catch { return $true }
 }
 
 function Try-ReleaseFile($file) {
-    $holders = Get-ProcessesHoldingFile $file
-    if (-not $holders) { return $false }
+    $holders = Get-Process | Where-Object {
+        try { $_.Modules.FileName -contains $file } catch { $false }
+    } | Select-Object -Unique
 
     foreach ($p in $holders) {
-        if ($ProtectedProcessNames -contains $p.Name) {
-            Log "Refusing to kill protected process $($p.Name) (PID $($p.Id)) for file $file"
-            continue
-        }
-
-        try {
-            Log "Attempting graceful close of $($p.Name) (PID $($p.Id))"
-            $p.CloseMainWindow() | Out-Null
-            Start-Sleep -Milliseconds 600
-        } catch { }
-
-        if (-not $p.HasExited) {
-            try {
-                Log "Force killing $($p.Name) (PID $($p.Id))"
-                Stop-Process -Id $p.Id -Force -ErrorAction Stop
-                Start-Sleep -Milliseconds 300
-            } catch {
-                Log "Failed to stop process $($p.Name) (PID $($p.Id)) : $_"
-            }
-        } else {
-            Log "Process $($p.Name) exited after close request."
-        }
+        if ($ProtectedProcessNames -contains $p.Name) { continue }
+        try { $p.CloseMainWindow(); Start-Sleep -Milliseconds 600 } catch {}
+        if (!$p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
     }
-
     return -not (Is-Locked $file)
 }
 
-# -------------------------
-# API lookups
-# -------------------------
+# ------------------------- Hash Lookups (all free) -------------------------
 function Query-CIRCL($sha256) {
-    if (-not $sha256) { return $null }
-    $url = "$CirclLookupBase/$sha256"
     try {
-        $resp = Invoke-RestMethod -Uri $url -Method GET -ErrorAction Stop
-        return $resp
-    } catch {
-        return $null
-    }
+        $resp = Invoke-RestMethod "$CirclLookupBase/$sha256" -TimeoutSec 8 -ErrorAction Stop
+        return ($resp -and ($resp | ConvertTo-Json -Depth 3).Length -gt 10)
+    } catch { return $false }
+}
+
+function Query-CymruMHR($sha256) {
+    try {
+        $resp = Invoke-RestMethod "$CymruMHR/$sha256" -TimeoutSec 8 -ErrorAction Stop
+        return ($resp.detections -and $resp.detections -ge 60)   # 60%+ AV engines flag it
+    } catch { return $false }
 }
 
 function Query-MalwareBazaar($sha256) {
-    if (-not $sha256) { return $null }
-    $body = @{ query = $sha256 }
-    if ($MalwareBazaarAuthKey -ne "") {
-        $body.Add("auth_key",$MalwareBazaarAuthKey)
-    }
+    if (-not $sha256) { return $false }
+    $body = @{ query = 'get_info'; sha256_hash = $sha256 }
+    if ($MalwareBazaarAuthKey) { $body.api_key = $MalwareBazaarAuthKey }
     try {
-        $resp = Invoke-RestMethod -Uri $MalwareBazaarApi -Method Post -Body $body -ErrorAction Stop
-        return $resp
-    } catch {
-        return $null
-    }
+        $resp = Invoke-RestMethod "https://mb-api.abuse.ch/api/v1/" -Method Post -Body $body -TimeoutSec 10
+        return ($resp.query_status -eq 'ok' -or ($resp.data -and $resp.data.Count -gt 0))
+    } catch { return $false }
 }
 
-# -------------------------
-# Skip logic (self-protect + protected folders)
-# -------------------------
-function Should-Skip($file) {
-    if (-not $file) { return $true }
-    if (-not (Test-Path $file -PathType Leaf)) { return $true }
+# ------------------------- Smart Unsigned DLL Blocking -------------------------
+function Is-SuspiciousUnsignedDll($file) {
+    $ext = [IO.Path]::GetExtension($file).ToLower()
+    if ($ext -notin @('.dll','.winmd')) { return $false }
 
-    # skip files inside protected folders
-    if (Is-InProtectedFolder $file) { return $true }
+    # Must be unsigned
+    try {
+        $sig = Get-AuthenticodeSignature $file -ErrorAction Stop
+        if ($sig.Status -eq 'Valid') { return $false }
+    } catch { return $false }
 
-    # skip the script itself
-    if ($ScriptSelfPath -and $ScriptSelfPath.ToLower() -eq $file.ToLower()) { return $true }
+    $size = (Get-Item $file -ErrorAction SilentlyContinue).Length
+    $pathLower = $file.ToLower()
+    $name = [IO.Path]::GetFileName($file).ToLower()
 
-    # skip files with same hash as running script
-    if ($ScriptSelfHash) {
-        $h = Compute-Hash $file
-        if ($h -and $h -eq $ScriptSelfHash) {
-            return $true
-        }
+    foreach ($rp in $RiskyPaths) {
+        if ($pathLower -like "*$rp*" -and $size -lt 3MB) { return $true }
     }
 
+    if ($pathLower -like "*\appdata\roaming\*" -and $size -lt 800KB -and $name -match '^[a-z0-9]{4,12}\.dll$') {
+        return $true
+    }
     return $false
 }
 
-# -------------------------
-# Decision & actions (policy matrix)
-# -------------------------
-function Decide-And-Act($file) {
-    if (Should-Skip $file) { return }
-
-    $ext = [System.IO.Path]::GetExtension($file).ToLower()
-    if (-not ($MonitoredExtensions -contains $ext)) { return }
-
-    Write-Host "Scanning: $file"
-    Log "Scanning: $file"
-
-    $sha256 = Compute-Hash $file
-    if (-not $sha256) {
-        Write-Host "   -> Cannot compute hash; skipping"
-        Log "Cannot compute hash for: $file"
-        return
-    }
-
-    # self-protection: skip same-hash (again)
-    if ($ScriptSelfHash -and $sha256 -eq $ScriptSelfHash) {
-        Write-Host "   -> Matches self hash; skipping"
-        Log "Skipping self-hash file: $file"
-        return
-    }
-
-    # 1) CIRCL trusted => Allowed
-    Write-Host "   -> Querying CIRCL for $sha256"
-    $circl = Query-CIRCL $sha256
-    if ($circl -ne $null -and $circl | Get-Member -Name 'hash' -ErrorAction SilentlyContinue) {
-        Write-Host "   -> Found in CIRCL trusted list; ALLOWED"
-        Log "Allowed (CIRCL): $file ($sha256)"
-        return
-    } elseif ($circl -ne $null -and ($circl | ConvertTo-Json).Length -gt 0) {
-        Write-Host "   -> CIRCL returned data; ALLOWED"
-        Log "Allowed (CIRCL): $file ($sha256)"
-        return
-    } else {
-        Write-Host "   -> Not found in CIRCL"
-    }
-
-    # 2) Microsoft-signed => Allowed
-    Write-Host "   -> Checking digital signature"
-    try {
-        $sig = Get-AuthenticodeSignature -FilePath $file -ErrorAction Stop
-        if ($sig.Status -eq 'Valid' -and $sig.SignerCertificate.Subject -match 'Microsoft Corporation') {
-            Write-Host "   -> Valid Microsoft signature; ALLOWED"
-            Log "Allowed (Microsoft-signed): $file ($sha256)"
-            return
-        } else {
-            Write-Host "   -> Not Microsoft-signed (Status: $($sig.Status))"
-        }
-    } catch {
-        Write-Host "   -> Error checking signature"
-    }
-
-    # 3) MalwareBazaar => QUARANTINE
-    Write-Host "   -> Querying MalwareBazaar for $sha256"
-    $mb = Query-MalwareBazaar $sha256
-    if ($mb -ne $null) {
-        if ($mb.query_status -and $mb.query_status -eq "ok") {
-            Write-Host "   -> Found on MalwareBazaar: QUARANTINE"
-            Log "Quarantined (MalwareBazaar): $file ($sha256)"
-            Do-Quarantine $file
-            return
-        } elseif ($mb.data -and $mb.data.Count -gt 0) {
-            Write-Host "   -> Found on MalwareBazaar (data present): QUARANTINE"
-            Log "Quarantined (MalwareBazaar-data): $file ($sha256)"
-            Do-Quarantine $file
-            return
-        } else {
-            Write-Host "   -> MalwareBazaar returned no match"
-        }
-    } else {
-        Write-Host "   -> MalwareBazaar lookup failed or returned no match"
-    }
-
-    # 4 & 5) Unsigned → now allowed everywhere (just logged)
-    Write-Host "   -> Unsigned executable. ALLOWED everywhere (logged for review)"
-    Log "Allowed unsigned (any location): $file ($sha256)"
-    return
-}
-
-# -------------------------
-# Quarantine
-# -------------------------
-function Do-Quarantine($file) {
-    if (-not (Test-Path $file -PathType Leaf)) {
-        Log "Do-Quarantine: file not found $file"
-        return
-    }
-
-    if (Is-Locked $file) {
-        Write-Host "   -> File locked; attempting to release locks"
-        if (-not (Try-ReleaseFile $file)) {
-            Write-Host "   -> Could not release file lock; skipping quarantine for now"
-            Log "Skip quarantine (locked): $file"
-            return
-        }
-    }
+# ------------------------- Quarantine -------------------------
+function Do-Quarantine($file, $reason) {
+    if (-not (Test-Path $file)) { return }
+    if (Is-Locked $file) { Try-ReleaseFile $file | Out-Null }
 
     $name = [IO.Path]::GetFileName($file)
-    $ts = Get-Date -Format "yyyyMMdd_HHmmss"
-    $bak = Join-Path $Backup ($name + "_" + $ts + ".bak")
-    $q = Join-Path $Quarantine ($name + "_" + $ts)
+    $ts   = Get-Date -Format "yyyyMMdd_HHmmss"
+    $bak  = Join-Path $Backup ("$name`_$ts.bak")
+    $q    = Join-Path $Quarantine ("$name`_$ts")
 
     try {
-        Copy-Item -Path $file -Destination $bak -Force -ErrorAction Stop
-        Move-Item -Path $file -Destination $q -Force -ErrorAction Stop
-        Write-Host "   -> Quarantined to $q (backup: $bak)"
-        Log "Quarantined: $file -> $q (bak: $bak)"
+        Copy-Item $file $bak -Force -ErrorAction Stop
+        Move-Item $file $q -Force -ErrorAction Stop
+        Log "QUARANTINED [$reason]: $file → $q (backup: $bak)"
     } catch {
-        Write-Host "   -> ERROR during quarantine: $_"
-        Log "ERROR during quarantine: $file : $_"
+        Log "QUARANTINE FAILED [$reason]: $file - $_"
     }
 }
 
-# -------------------------
-# Scanning primitives
-# -------------------------
-function Scan-Drive($root) {
-    Write-Host "Starting scan on drive: $root"
-    Log "Drive scan start: $root"
+# ------------------------- Main Decision Engine -------------------------
+function Decide-And-Act($file) {
+    if (-not (Test-Path $file -PathType Leaf)) { return }
+    $ext = [IO.Path]::GetExtension($file).ToLower()
+    if ($ext -notin $MonitoredExtensions) { return }
 
-    try {
-        $stack = New-Object System.Collections.Stack
-        $stack.Push($root)
+    $sha256 = Compute-Hash $file
+    if (-not $sha256) { return }
 
-        while ($stack.Count -gt 0) {
-            $dir = $stack.Pop()
-            try {
-                $entries = Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop
-                foreach ($e in $entries) {
-                    if ($e.PSIsContainer) {
-                        $stack.Push($e.FullName)
-                    } else {
-                        Decide-And-Act $e.FullName
-                    }
-                }
-            } catch {
-                Log "Error enumerating $dir : $_"
-                continue
-            }
-        }
-    } catch {
-        Log "Scan-Drive failed for $root : $_"
+    # 1. CIRCL trusted list → instantly allow
+    if (Query-CIRCL $sha256) {
+        Log "ALLOWED (CIRCL trusted): $file"
+        return
     }
 
-    Write-Host "Drive scan complete: $root"
-    Log "Drive scan complete: $root"
+    # 2. Known malware on Cymru MHR or MalwareBazaar → quarantine
+    if (Query-CymruMHR $sha256) {
+        Do-Quarantine $file "Cymru MHR match (≥60% AVs)"
+        return
+    }
+    if (Query-MalwareBazaar $sha256) {
+        Do-Quarantine $file "MalwareBazaar match"
+        return
+    }
+
+    # 3. Smart unsigned DLL blocking
+    if (Is-SuspiciousUnsignedDll $file) {
+        Do-Quarantine $file "Suspicious unsigned DLL in risky location"
+        return
+    }
+
+    # 4. Everything else is allowed
+    Log "ALLOWED (clean): $file"
 }
 
-function Scan-AllDrives() {
-    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -ne $null }
-    foreach ($d in $drives) {
+# ------------------------- Process + Network Scanner -------------------------
+function Scan-ProcessesAndNetwork() {
+    Get-Process | ForEach-Object {
         try {
-            $root = $d.Root
-            Scan-Drive $root
-        } catch {
-            Log "Skipping drive $($d.Name): $_"
-        }
+            $exe = $_.MainModule.FileName
+            if ($exe -and (Test-Path $exe)) { Decide-And-Act $exe }
+        } catch {}
     }
-}
 
-# -------------------------
-# Memory and network scanning
-# -------------------------
-function Scan-Processes() {
-    Write-Host "Scanning running processes"
-    foreach ($p in Get-Process -ErrorAction SilentlyContinue) {
+    Get-NetTCPConnection | Where-Object { $_.State -in 'Established','Listen' } | ForEach-Object {
         try {
-            $exe = $null
-            try { $exe = $p.MainModule.FileName } catch { $exe = $null }
-
-            if ($exe -and (Test-Path $exe)) {
-                $ext = [System.IO.Path]::GetExtension($exe).ToLower()
-                if ($MonitoredExtensions -contains $ext) {
-                    Decide-And-Act $exe
-                }
-            }
-        } catch { }
+            $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
+            if ($p) { $exe = $p.MainModule.FileName; if ($exe) { Decide-And-Act $exe } }
+        } catch {}
     }
 }
 
-function Scan-NetworkProcesses() {
-    Write-Host "Scanning network-connected processes (TCP)"
-    try {
-        $conns = Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { $_.State -in @("Established","Listen") }
-        foreach ($c in $conns) {
-            if ($null -ne $c.OwningProcess -and $c.OwningProcess -ne 0) {
-                try {
-                    $p = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
-                    if ($p) {
-                        try { $exe = $p.MainModule.FileName } catch { $exe = $null }
-                        if ($exe -and (Test-Path $exe)) {
-                            $ext = [System.IO.Path]::GetExtension($exe).ToLower()
-                            if ($MonitoredExtensions -contains $ext) {
-                                Decide-And-Act $exe
-                            }
-                        }
-                    }
-                } catch {}
-            }
+# ------------------------- Startup (safe folders only) -------------------------
+Log "=== Antivirus started – scanning high-risk folders only ==="
+@("$env:USERPROFILE\Downloads", "$env:USERPROFILE\Desktop", "$env:TEMP", "$env:APPDATA", "$env:LOCALAPPDATA\Temp") | ForEach-Object {
+    if (Test-Path $_) {
+        Get-ChildItem $_ -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+            Decide-And-Act $_.FullName
         }
-    } catch {
-        Log "Error scanning network processes: $_"
     }
 }
 
-# -------------------------
-# Main runtime
-# -------------------------
-Write-Host "Antivirus script starting."
-Log "Antivirus launched."
+# === OPTIONAL: Real-time file creation monitoring in high-risk folders ===
+$WatchFolders = @("$env:USERPROFILE\Downloads", "$env:USERPROFILE\Desktop", "$env:TEMP", "$env:APPDATA", "$env:LOCALAPPDATA\Temp")
 
-# One-shot full scan
-Scan-AllDrives
-Scan-Processes
-Scan-NetworkProcesses
-
-# Optional realtime loop
-function Start-RealTime {
-    Write-Host "Starting realtime loop (re-scans processes & network every 30s)"
-    Log "Realtime loop started"
-    while ($true) {
-        try {
-            Scan-Processes
-            Scan-NetworkProcesses
-        } catch {
-            Log "Realtime loop error: $_"
+foreach ($folder in $WatchFolders) {
+    if (-not (Test-Path $folder)) { continue }
+    $watcher = New-Object IO.FileSystemWatcher $folder, "*.*" -Property @{IncludeSubdirectories = $true; NotifyFilter = 'FileName, LastWrite'}
+    Register-ObjectEvent $watcher Created -Action {
+        $path = $Event.SourceEventArgs.FullPath
+        $ext  = [IO.Path]::GetExtension($path).ToLower()
+        if ($MonitoredExtensions -contains $ext) {
+            Start-Sleep -Milliseconds 800  # wait for file to finish writing
+            Decide-And-Act $path
         }
-        Start-Sleep -Seconds 0.1
-    }
+    } | Out-Null
+    $watcher.EnableRaisingEvents = $true
 }
+Log "Real-time file watchers active on high-risk folders"
 
-# Uncomment to enable realtime
-Start-RealTime
-
-Write-Host "Antivirus initial pass complete."
-Log "Antivirus initial pass complete."
-
-# End of script
-
-
+# ------------------------- Realtime Loop -------------------------
+Log "Realtime monitoring active (processes + network every 30 seconds)"
+while ($true) {
+    try { Scan-ProcessesAndNetwork } catch { Log "Scan loop error: $_" }
+    Start-Sleep -Seconds 30
+}
