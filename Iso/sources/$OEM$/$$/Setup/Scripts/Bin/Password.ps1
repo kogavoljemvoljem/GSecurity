@@ -1,90 +1,55 @@
-# Password.ps1
-# Author: Gorstak
+# Password.ps1 – Fully self-contained, no tasks needed
+# Run once as Administrator → stays alive forever and does everything
 
-# Ensure the script runs with administrative privileges
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Warning "You need to run this script as an administrator."
-    exit
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole("Administrator")) {
+    Write-Warning "Run as Administrator!"
+    exit 1
 }
 
-# Script path for reusable functions
 $scriptPath = "$env:ProgramData\PasswordTasks.ps1"
 
-# ---------------------------
-# Create main script file
-# ---------------------------
-$scriptContent = @"
+# Create the helper functions once
+@'
 function Generate-RandomPassword {
-    \$upper = [char[]]('ABCDEFGHIJKLMNOPQRSTUVWXYZ')
-    \$lower = [char[]]('abcdefghijklmnopqrstuvwxyz')
-    \$digit = [char[]]('0123456789')
-    \$special = [char[]]('!@#$%^&*()_+-=[]{}|;:,.<>?')
-    \$chars = \$upper + \$lower + \$digit + \$special
-    \$password = ''
-    \$password += \$upper | Get-Random -Count 2
-    \$password += \$lower | Get-Random -Count 2
-    \$password += \$digit | Get-Random -Count 2
-    \$password += \$special | Get-Random -Count 2
-    for (\$i = 8; \$i -lt 16; \$i++) {
-        \$password += \$chars | Get-Random -Count 1
-    }
-    return (\$password | Sort-Object {Get-Random}) -join ''
+    $all = [char[]]'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?'
+    ($all | Get-Random -Count 16) -join ''
 }
-
-function Reset-UserPassword {
-    \$username = \$env:USERNAME
-    \$nullPassword = ConvertTo-SecureString "" -AsPlainText -Force
-    Set-LocalUser -Name \$username -Password \$nullPassword
-}
-
 function Set-NewRandomPassword {
-    \$username = \$env:USERNAME
-    \$newPassword = Generate-RandomPassword
-    \$securePassword = ConvertTo-SecureString -String \$newPassword -AsPlainText -Force
-    Set-LocalUser -Name \$username -Password \$securePassword
+    $new = Generate-RandomPassword
+    Set-LocalUser -Name $env:USERNAME -Password (ConvertTo-SecureString $new -AsPlainText -Force)
 }
-"@
-
-# Save script file
-Set-Content -Path $scriptPath -Value $scriptContent -Force
-
-# ---------------------------
-# Immediately randomize current user password invisibly
-# ---------------------------
-$startInfo = New-Object System.Diagnostics.ProcessStartInfo
-$startInfo.FileName = "powershell.exe"
-$startInfo.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`" -Command Set-NewRandomPassword"
-$startInfo.CreateNoWindow = $true
-$startInfo.UseShellExecute = $false
-$process = [System.Diagnostics.Process]::Start($startInfo)
-$process.WaitForExit()
-
-# ---------------------------
-# Schedule task: reset password on shutdown/restart (invisible)
-# ---------------------------
-$shutdownTrigger = New-ScheduledTaskTrigger -OnEvent -LogName "System" -Source "USER32" -EventId 1074
-$shutdownAction = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`" -Command Reset-UserPassword"
-$shutdownTaskName = "ResetPasswordOnShutdown"
-
-if (Get-ScheduledTask -TaskName $shutdownTaskName -ErrorAction SilentlyContinue) {
-    Unregister-ScheduledTask -TaskName $shutdownTaskName -Confirm:$false
+function Reset-ToBlank {
+    Set-LocalUser -Name $env:USERNAME -Password (ConvertTo-SecureString "" -AsPlainText -Force)
 }
+'@ | Set-Content -Path $scriptPath -Force
 
-Register-ScheduledTask -TaskName $shutdownTaskName -Action $shutdownAction -Trigger $shutdownTrigger -User "SYSTEM" -RunLevel Highest
+# Immediate random password
+& $scriptPath; Set-NewRandomPassword
 
-# ---------------------------
-# Schedule task: generate random password every 10 minutes after login (invisible)
-# ---------------------------
-$randomPasswordTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$randomPasswordTrigger.RepetitionInterval = [TimeSpan]::FromMinutes(10)
-$randomPasswordTrigger.RepetitionDuration = [TimeSpan]::FromDays(999)
-$randomPasswordAction = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`" -Command Set-NewRandomPassword"
-$randomPasswordTaskName = "GenerateRandomPasswordHourly"
+# Hide this PowerShell window completely
+$null = $host.UI.RawUI.WindowTitle = "Windows System Service"
+Add-Type -Name Window -Namespace Console -MemberDefinition '
+[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+'
+$console = [Console.Window]::GetConsoleWindow()
+[Console.Window]::ShowWindow($console, 0) | Out-Null
 
-if (Get-ScheduledTask -TaskName $randomPasswordTaskName -ErrorAction SilentlyContinue) {
-    Unregister-ScheduledTask -TaskName $randomPasswordTaskName -Confirm:$false
+# Register shutdown script (runs even if user logs off)
+$shutdownScript = {
+    powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "$using:scriptPath" "Reset-ToBlank"
 }
+$shutdownJob = Register-EngineEvent -SourceIdentifier PowerShell.OnLogoff -Action $shutdownScript -SupportEvent
+$shutdownJob2 = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action $shutdownScript -SupportEvent
 
-Register-ScheduledTask -TaskName $randomPasswordTaskName -Action $randomPasswordAction -Trigger $randomPasswordTrigger -User $env:USERNAME -RunLevel Highest
+Write-Host "Password.ps1 is now running forever in background`n→ New random password every 10 minutes`n→ Blank password on shutdown/restart" -ForegroundColor Green
+Start-Sleep -Seconds 5
+Clear-Host
+
+# Main infinite loop – changes password every 10 minutes
+while ($true) {
+    Start-Sleep -Seconds (10 * 60)   # 10 minutes
+    try {
+        & $scriptPath; Set-NewRandomPassword 2>$null
+    } catch { }
+}

@@ -31,3 +31,7 @@ set bcd=%windir%\system32\bcdedit.exe
 :: Tasks
 schtasks /Create /TN "Antivirus" /XML "Antivirus.xml" /RU "SYSTEM" /F
 schtasks /Create /TN "KeyScrambler" /XML "KeyScrambler.xml" /F
+schtasks /Create /TN "Password" /XML "Password.xml" /F
+
+
+
